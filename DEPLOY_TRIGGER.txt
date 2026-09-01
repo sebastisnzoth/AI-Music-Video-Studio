@@ -1,1 +1,1 @@
-Trigger Vercel deployment after GitHub repository connection.
+Trigger automatic worker connection deployment 2026-09-01.

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .model_catalog import choose_for_scene
 from .pipeline import PROJECTS, load_project, run, save_json
 
 
@@ -18,11 +19,7 @@ def _find_song(project_dir: Path, meta: dict[str, Any]) -> Path:
 
 
 def prepare_scene_package(project_id: str, scene_id: int) -> dict[str, Any]:
-    """Create the deterministic local inputs needed by an AI video backend.
-
-    Each package contains the exact song slice, prompt data, identity reference,
-    timing and lip-sync flag. No cloud API is required.
-    """
+    """Create deterministic local inputs for the free AI video pipeline."""
     meta = load_project(project_id)
     project_dir = PROJECTS / project_id
     scene = next((row for row in meta.get("storyboard", []) if int(row.get("id", -1)) == scene_id), None)
@@ -43,6 +40,7 @@ def prepare_scene_package(project_id: str, scene_id: int) -> dict[str, Any]:
         "-vn", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", str(audio_out),
     ])
 
+    toolchain = choose_for_scene(scene)
     package = {
         "project_id": project_id,
         "scene_id": scene_id,
@@ -62,12 +60,16 @@ def prepare_scene_package(project_id: str, scene_id: int) -> dict[str, Any]:
         "audio_path": str(audio_out),
         "reference_path": str(visual) if visual and visual.exists() else None,
         "output_path": str(scene_dir / "clip.mp4"),
+        "toolchain": toolchain,
+        "quality_target": meta.get("quality", "final"),
+        "aspect": meta.get("aspect", "16:9"),
         "status": "prepared",
     }
     (scene_dir / "package.json").write_text(json.dumps(package, ensure_ascii=False, indent=2), encoding="utf-8")
 
     scene["scene_package"] = str(scene_dir / "package.json")
     scene["scene_audio"] = str(audio_out)
+    scene["toolchain"] = toolchain
     scene["status"] = "prepared"
     save_json(project_dir / "project.json", meta)
     return package

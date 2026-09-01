@@ -1,0 +1,10 @@
+[project]
+name = "ai-music-video-studio-control"
+version = "0.12.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.117.1"
+]
+
+[tool.vercel]
+entrypoint = "app.vercel_app:app"

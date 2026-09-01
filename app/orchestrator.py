@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .generation_service import queue_scene_image, refresh_scene_generation
 from .local_pipeline import detect_local_tools, run_deep_live_cam, run_upscale, run_wav2lip
 from .pipeline import PROJECTS, load_project, save_json
 from .scene_package import prepare_scene_package
@@ -32,7 +33,6 @@ def _log(scene: dict[str, Any], stage: str, status: str, detail: str = "") -> No
         "status": status,
         "detail": detail,
     })
-    # Keep project.json compact during long iterative runs.
     scene["auto_pipeline_log"] = scene["auto_pipeline_log"][-80:]
 
 
@@ -85,6 +85,9 @@ def advance_scene_pipeline(
     project_id: str,
     scene_id: int,
     *,
+    checkpoint: str | None = None,
+    image_steps: int = 24,
+    image_cfg: float = 6.0,
     fps: int = 24,
     use_face_refine: bool = True,
     mouth_mask: bool = True,
@@ -95,12 +98,7 @@ def advance_scene_pipeline(
     upscale_scale: int = 2,
     strict_optional: bool = False,
 ) -> dict[str, Any]:
-    """Advance one scene through the local video pipeline.
-
-    The function is intentionally resumable. ComfyUI video generation is queued
-    and subsequent calls poll it; completed stages are never repeated. Optional
-    post-processors are skipped when unavailable unless strict_optional=True.
-    """
+    """Advance one scene through a resumable local image-to-review pipeline."""
     meta = load_project(project_id)
     project_dir = PROJECTS / project_id
     scene = _scene(meta, scene_id)
@@ -112,14 +110,50 @@ def advance_scene_pipeline(
         _log(scene, "prepare", "done", "Audio y package preparados")
         save_json(project_dir / "project.json", meta)
 
+    # 0) Generate/import the scene image when needed.
     if not _exists(scene.get("generated_image")):
-        scene["auto_pipeline_state"] = "blocked"
-        scene["auto_pipeline_error"] = "Falta generated_image. Generá o seleccioná primero la imagen de la escena."
-        _log(scene, "image", "blocked", scene["auto_pipeline_error"])
-        save_json(project_dir / "project.json", meta)
-        return auto_pipeline_status(project_id, scene_id)
+        image_prompt_id = scene.get("comfyui_prompt_id")
+        if image_prompt_id:
+            refreshed_image = refresh_scene_generation(project_id, scene_id)
+            meta = load_project(project_id)
+            scene = _scene(meta, scene_id)
+            if not _exists(scene.get("generated_image")):
+                if refreshed_image.get("status") == "generation_failed":
+                    scene["auto_pipeline_state"] = "failed"
+                    scene["auto_pipeline_error"] = "ComfyUI terminó sin producir una imagen utilizable."
+                    _log(scene, "image", "failed", scene["auto_pipeline_error"])
+                else:
+                    scene["auto_pipeline_state"] = "waiting_image"
+                    _log(scene, "image", "waiting", "ComfyUI sigue generando/importando la imagen")
+                save_json(project_dir / "project.json", meta)
+                return auto_pipeline_status(project_id, scene_id)
+            _log(scene, "image", "done", str(scene.get("generated_image")))
+            save_json(project_dir / "project.json", meta)
+        elif checkpoint:
+            queued_image = queue_scene_image(
+                project_id,
+                scene_id,
+                checkpoint=checkpoint,
+                steps=max(1, int(image_steps)),
+                cfg=float(image_cfg),
+            )
+            meta = load_project(project_id)
+            scene = _scene(meta, scene_id)
+            scene["auto_pipeline_state"] = "waiting_image"
+            scene.pop("auto_pipeline_error", None)
+            _log(scene, "image", "queued", f"ComfyUI prompt {queued_image.get('prompt_id')}")
+            save_json(project_dir / "project.json", meta)
+            return auto_pipeline_status(project_id, scene_id)
+        else:
+            scene["auto_pipeline_state"] = "blocked"
+            scene["auto_pipeline_error"] = "Falta generated_image y no se indicó checkpoint para generarla."
+            _log(scene, "image", "blocked", scene["auto_pipeline_error"])
+            save_json(project_dir / "project.json", meta)
+            return auto_pipeline_status(project_id, scene_id)
 
     # 1) Image-to-video via ComfyUI. Queue once, then poll on later calls.
+    meta = load_project(project_id)
+    scene = _scene(meta, scene_id)
     if not _exists(scene.get("generated_clip")):
         prompt_id = scene.get("comfyui_video_prompt_id")
         if not prompt_id:
@@ -142,7 +176,7 @@ def advance_scene_pipeline(
                 _log(scene, "video", "failed", scene["auto_pipeline_error"])
             else:
                 scene["auto_pipeline_state"] = "waiting_video"
-                _log(scene, "video", "waiting", "ComfyUI sigue generando")
+                _log(scene, "video", "waiting", "ComfyUI sigue generando/importando el video")
             save_json(project_dir / "project.json", meta)
             return auto_pipeline_status(project_id, scene_id)
         _log(scene, "video", "done", str(scene.get("generated_clip")))

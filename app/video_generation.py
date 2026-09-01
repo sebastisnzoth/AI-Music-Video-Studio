@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .comfyui import DEFAULT_BASE_URL, get_history, load_workflow, output_files, queue_prompt, render_workflow
+from .comfyui import ComfyUIError, DEFAULT_BASE_URL, get_history, load_workflow, output_files, queue_prompt, render_workflow
 from .pipeline import PROJECTS, load_project, save_json
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,7 +121,21 @@ def refresh_scene_video(project_id: str, scene_id: int, base_url: str = DEFAULT_
     if not prompt_id:
         return {"project_id": project_id, "scene_id": scene_id, "status": scene.get("status", "planned"), "outputs": []}
 
-    history = get_history(str(prompt_id), base_url=base_url)
+    try:
+        history = get_history(str(prompt_id), base_url=base_url)
+    except ComfyUIError as exc:
+        # En CPU ComfyUI puede quedar ocupado varios segundos. No cortar el
+        # pipeline: mantener estado de generación y reintentar en la siguiente consulta.
+        return {
+            "project_id": project_id,
+            "scene_id": scene_id,
+            "status": scene.get("status", "generating_video"),
+            "outputs": [],
+            "transient": True,
+            "transient_error": str(exc),
+            "prompt_id": prompt_id,
+        }
+
     if history is None:
         return {"project_id": project_id, "scene_id": scene_id, "status": "generating_video", "outputs": []}
 

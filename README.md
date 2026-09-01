@@ -11,9 +11,12 @@ canción + foto/video + letra opcional
 → storyboard sincronizado al beat
 → Director visual
 → escenas independientes
-→ generación IA local (ComfyUI)
+→ generación IA local (ComfyUI / LocalAI)
+→ image-to-video
+→ identidad / face refinement
 → lip-sync local
 → upscale
+→ revisión por versiones
 → montaje con audio original
 → MP4 final
 ```
@@ -23,24 +26,24 @@ canción + foto/video + letra opcional
 El proyecto ya permite:
 
 - Crear proyectos desde el navegador.
-- Subir canción (MP3/WAV/M4A/etc.).
-- Subir una foto o video de referencia.
+- Subir canción y foto/video de referencia.
 - Pegar letra opcional.
 - Elegir 16:9 o 9:16 y calidad Preview / Final / Master.
-- Analizar duración con ffprobe.
 - Analizar BPM, beats, energía y cambios aproximados de sección con librosa.
 - Crear storyboard sincronizado con beats y energía.
-- Aplicar un Director local que decide estrategia, cámara, iluminación, paleta y si una escena necesita lip-sync.
-- Preparar fragmentos WAV exactos por escena.
-- Crear `package.json` por escena con prompt, negative prompt, referencia, audio y toolchain.
-- Catálogo local de motores: ComfyUI, Wav2Lip, MuseTalk, Real-ESRGAN y FFmpeg.
-- Aprobar escenas individualmente.
-- Renderizar un MP4 base con FFmpeg usando el audio original.
-- Guardar proyectos y estados.
-- Detectar un servidor ComfyUI local.
-- Enviar un workflow API real a ComfyUI por escena y guardar su `prompt_id`.
-- Consultar el historial de ComfyUI y registrar los archivos generados.
-- Transcribir localmente con faster-whisper cuando está instalado.
+- Director local para estrategia, cámara, iluminación, paleta y lip-sync.
+- Preparar WAV exactos y `package.json` por escena.
+- Perfil de identidad reutilizable por proyecto.
+- Catálogo de motores locales.
+- Generación de imagen mediante ComfyUI.
+- Image-to-video mediante workflow ComfyUI configurable.
+- Backend alternativo LocalAI configurable.
+- Deep-Live-Cam opcional para refinamiento facial.
+- Wav2Lip y Real-ESRGAN como adapters locales opcionales.
+- Versiones, comentarios y aprobación por escena.
+- Subtítulos SRT y burn-in con FFmpeg.
+- Ensamblado final conservando la canción original como audio master.
+- Importar automáticamente el clip generado desde la carpeta `output` de ComfyUI.
 
 No requiere ninguna API paga para funcionar en modo local.
 
@@ -48,7 +51,7 @@ No requiere ninguna API paga para funcionar en modo local.
 
 - Python 3.10+
 - FFmpeg + ffprobe
-- Opcional para IA: ComfyUI ejecutándose en `http://127.0.0.1:8188`
+- Opcional para IA: ComfyUI en `http://127.0.0.1:8188`
 
 ### macOS
 
@@ -56,7 +59,7 @@ No requiere ninguna API paga para funcionar en modo local.
 brew install ffmpeg
 ```
 
-## Instalación básica
+## Instalación
 
 ```bash
 git clone https://github.com/sebastisnzoth/AI-Music-Video-Studio.git
@@ -64,7 +67,7 @@ cd AI-Music-Video-Studio
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python -m app.main
+bash run.sh
 ```
 
 Abrir:
@@ -73,44 +76,24 @@ Abrir:
 http://127.0.0.1:8080
 ```
 
-## Activar análisis IA local
+## Análisis IA local
 
 ```bash
 source .venv/bin/activate
 pip install -r requirements-ai.txt
 ```
 
-`faster-whisper` usa CPU/int8 por defecto para conservar compatibilidad con equipos sin CUDA.
+`faster-whisper` usa CPU/int8 por defecto.
 
-## Primera generación real con ComfyUI
+## Generación de imágenes con ComfyUI
 
-1. Iniciar ComfyUI y comprobar que abre normalmente en `http://127.0.0.1:8188`.
-2. Tener al menos un checkpoint compatible visible en `CheckpointLoaderSimple`.
-3. Iniciar AI Music Video Studio.
-4. Crear un proyecto con canción + foto/video.
-5. En la web, escribir el nombre exacto del checkpoint, por ejemplo `modelo.safetensors`.
-6. En una tarjeta del storyboard pulsar **Preparar**.
-7. Pulsar **Generar IA**.
-8. Pulsar **Estado** para consultar el resultado.
-
-El workflow base está en:
+Workflow base:
 
 ```text
 workflows/scene-image-api.json
 ```
 
-Usa únicamente nodos estándar de ComfyUI:
-
-```text
-CheckpointLoaderSimple
-→ CLIPTextEncode positivo/negativo
-→ EmptyLatentImage
-→ KSampler
-→ VAEDecode
-→ SaveImage
-```
-
-Variables sustituidas automáticamente:
+Variables:
 
 ```text
 {{checkpoint}}
@@ -124,40 +107,76 @@ Variables sustituidas automáticamente:
 {{scene_id}}
 ```
 
-La generación base usa una resolución intermedia y deja el upscale para una etapa posterior. Esto reduce memoria y tiempo sin limitar el master final.
+## Image-to-video con ComfyUI
 
-## API principal
+Exportá desde ComfyUI un workflow en formato **API JSON** que produzca video y configurá:
 
-```text
-GET  /api/health
-GET  /api/models
-POST /api/projects
-POST /api/projects/{id}/scenes/{scene}/prepare
-POST /api/projects/{id}/scenes/{scene}/generate-image
-GET  /api/projects/{id}/scenes/{scene}/generation-status
-POST /api/projects/{id}/prepare-all
+```bash
+export COMFYUI_VIDEO_WORKFLOW="/ruta/scene-video-api.json"
 ```
 
-## Próximas etapas
+El workflow puede ser LTX, Wan u otro motor instalado localmente, siempre que use las variables que necesite de esta lista:
 
-1. Conectar faster-whisper automáticamente al alta del proyecto.
-2. Mejorar detección verso/estribillo/puente.
-3. Añadir workflow de referencia/identidad para mantener el rostro del artista.
-4. Añadir image-to-video local mediante workflow ComfyUI.
-5. Wav2Lip/MuseTalk sobre escenas `needs_lipsync`.
-6. Control automático de calidad e identidad por escena.
-7. Real-ESRGAN/otro upscale local y master 1080p/4K.
-8. Montaje final de clips aprobados con el audio original.
-9. Reels/Shorts automáticos.
+```text
+{{prompt}}
+{{negative_prompt}}
+{{reference_path}}
+{{audio_path}}
+{{duration}}
+{{fps}}
+{{frame_count}}
+{{seed}}
+{{scene_id}}
+```
 
-## Repos evaluados
+### Carpeta output de ComfyUI
 
-- VocaVid: referencia principal para storyboard, ComfyUI, generación por escena y flujo resumible.
-- Maestro: referencia para Director musical, BPM, secciones y energía.
-- MusicVision: referencia para lip-sync, continuidad y export profesional; su implementación actual requiere GPU NVIDIA potente.
-- `higgsfield-seedance2-jineng`: útil como referencia de dirección, cámara, energía y prompting; Higgsfield/Seedance no es dependencia del modo gratuito.
-- `open-higgsfield`: útil como referencia de catálogo de motores, estados e inputs por rol; su generación real usa platform key externa y no forma parte del motor gratuito.
-- MiniMax CLI (`sebastisnzoth/cli`): opcional únicamente; requiere Token Plan/API key.
+Si ComfyUI está en `~/ComfyUI`, la app detecta automáticamente:
+
+```text
+~/ComfyUI/output
+```
+
+Si está en otro lugar, definí una de estas variables:
+
+```bash
+export COMFYUI_DIR="/ruta/a/ComfyUI"
+```
+
+o directamente:
+
+```bash
+export COMFYUI_OUTPUT_DIR="/ruta/a/ComfyUI/output"
+```
+
+Cuando `/history` informa que el video terminó, la app:
+
+1. resuelve `filename + subfolder` dentro de `output`;
+2. copia el archivo a `projects/<id>/scenes/<scene>/clip-generated.*`;
+3. registra automáticamente `generated_clip`;
+4. cambia la escena a `clip_ready`.
+
+A partir de ahí puede continuar automáticamente por:
+
+```text
+generated_clip
+→ Deep-Live-Cam opcional
+→ Wav2Lip si necesita canto
+→ Real-ESRGAN
+→ revisión/aprobación
+→ master
+```
+
+## Backends opcionales
+
+- ComfyUI: imagen + image-to-video.
+- LocalAI: backend multimodal/video alternativo.
+- Deep-Live-Cam: refinamiento/consistencia facial.
+- Wav2Lip/MuseTalk: lip-sync.
+- Real-ESRGAN: upscale.
+- HyperFrames: overlays, captions y motion graphics deterministas.
+- SRS: preview/live streaming opcional.
+- Duix Avatar: digital human opcional para hardware NVIDIA potente.
 
 ## Filosofía
 

@@ -48,27 +48,92 @@ def load_project(project_id: str) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def make_storyboard(song_duration: float, lyrics: str, style: str) -> list[dict[str, Any]]:
+def _nearest_beat(value: float, beats: list[float], max_distance: float = 1.0) -> float:
+    if not beats:
+        return value
+    nearest = min(beats, key=lambda x: abs(x - value))
+    return float(nearest) if abs(nearest - value) <= max_distance else value
+
+
+def _scene_prompt(style: str, lyric: str, scene_id: int, energy: str) -> str:
+    subject = f"visual interpretation of lyric: {lyric}" if lyric else f"instrumental music-video shot {scene_id}"
+    movement = {
+        "high": "energetic camera movement, stronger performance, dramatic motion",
+        "low": "intimate slow camera movement, restrained performance, atmospheric detail",
+    }.get(energy, "cinematic camera movement, expressive performance")
+    return (
+        f"{style}, premium cinematic music video, {subject}, {movement}, "
+        "consistent artist identity, realistic face, coherent wardrobe, professional lighting, "
+        "natural motion, filmic depth of field, no text, no watermark"
+    )
+
+
+def make_storyboard(
+    song_duration: float,
+    lyrics: str,
+    style: str,
+    analysis: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    analysis = analysis or {}
+    beats = [float(x) for x in analysis.get("beats", [])]
+    sections = analysis.get("sections", []) or []
     raw_lines = [line.strip() for line in lyrics.splitlines() if line.strip() and not line.strip().startswith("[")]
+
     if raw_lines:
-        target = max(4.0, min(8.0, song_duration / max(1, len(raw_lines))))
-        scenes = []
+        ideal = song_duration / max(1, len(raw_lines))
+        target = max(3.0, min(8.0, ideal))
+        scenes: list[dict[str, Any]] = []
         t = 0.0
         for i, line in enumerate(raw_lines):
-            end = song_duration if i == len(raw_lines) - 1 else min(song_duration, t + target)
+            raw_end = song_duration if i == len(raw_lines) - 1 else min(song_duration, t + target)
+            end = song_duration if i == len(raw_lines) - 1 else _nearest_beat(raw_end, beats)
+            if end <= t + 1.0:
+                end = raw_end
+            midpoint = (t + end) / 2
+            energy = "medium"
+            for section in sections:
+                if float(section.get("start", 0)) <= midpoint < float(section.get("end", song_duration)):
+                    energy = str(section.get("energy", "medium"))
+                    break
             scenes.append({
                 "id": i + 1,
                 "start": round(t, 3),
                 "end": round(end, 3),
                 "duration": round(max(0.1, end - t), 3),
                 "lyrics": line,
-                "prompt": f"{style} music video scene, cinematic lighting, expressive performance, visual idea inspired by: {line}",
+                "energy": energy,
+                "prompt": _scene_prompt(style, line, i + 1, energy),
                 "status": "planned",
                 "approved": False,
+                "generation_engine": "reference",
             })
             t = end
             if t >= song_duration:
                 break
+        if scenes:
+            scenes[-1]["end"] = round(song_duration, 3)
+            scenes[-1]["duration"] = round(song_duration - float(scenes[-1]["start"]), 3)
+        return scenes
+
+    # Prefer musically detected sections when there are no lyrics.
+    if sections:
+        scenes = []
+        for i, section in enumerate(sections):
+            start = float(section["start"])
+            end = float(section["end"])
+            energy = str(section.get("energy", "medium"))
+            scenes.append({
+                "id": i + 1,
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "duration": round(end - start, 3),
+                "lyrics": "",
+                "energy": energy,
+                "prompt": _scene_prompt(style, "", i + 1, energy),
+                "status": "planned",
+                "approved": False,
+                "generation_engine": "reference",
+            })
         return scenes
 
     scene_len = 6.0
@@ -83,11 +148,26 @@ def make_storyboard(song_duration: float, lyrics: str, style: str) -> list[dict[
             "end": round(end, 3),
             "duration": round(end - start, 3),
             "lyrics": "",
-            "prompt": f"{style} music video scene {i + 1}, cinematic, coherent artist identity, dynamic camera",
+            "energy": "medium",
+            "prompt": _scene_prompt(style, "", i + 1, "medium"),
             "status": "planned",
             "approved": False,
+            "generation_engine": "reference",
         })
     return scenes
+
+
+def update_scene(project_id: str, scene_id: int, updates: dict[str, Any]) -> dict[str, Any]:
+    meta = load_project(project_id)
+    allowed = {"prompt", "approved", "status", "generation_engine"}
+    scene = next((x for x in meta.get("storyboard", []) if int(x.get("id", -1)) == scene_id), None)
+    if scene is None:
+        raise KeyError(scene_id)
+    for key, value in updates.items():
+        if key in allowed:
+            scene[key] = value
+    save_json(PROJECTS / project_id / "project.json", meta)
+    return scene
 
 
 def render_reference(project_dir: Path, audio: Path, visual: Path, visual_kind: str, aspect: str, quality: str) -> Path:
@@ -143,6 +223,7 @@ def create_project_files(title: str, style: str, aspect: str, quality: str, lyri
         "lyrics": lyrics,
         "status": "created",
         "progress": 5,
+        "analysis": {},
         "storyboard": [],
     }
     save_json(project_dir / "project.json", metadata)

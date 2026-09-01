@@ -77,23 +77,36 @@ install_ffmpeg_macos_intel() {
   fi
 }
 
-install_cloudflared_macos_intel() {
-  echo "cloudflared no encontrado. Instalando binario local para macOS Intel..."
-  require_free_mb 250
+install_cloudflared_from_url() {
+  local url="$1"
   rm -rf "$TOOLS_TMP/cloudflared-unpack" "$TOOLS_TMP/cloudflared.tgz"
   mkdir -p "$TOOLS_TMP/cloudflared-unpack"
-  curl -fL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz" -o "$TOOLS_TMP/cloudflared.tgz"
+  curl -fL "$url" -o "$TOOLS_TMP/cloudflared.tgz"
   tar -xzf "$TOOLS_TMP/cloudflared.tgz" -C "$TOOLS_TMP/cloudflared-unpack"
-  CLOUDFLARED_SRC="$(find "$TOOLS_TMP/cloudflared-unpack" -type f -name cloudflared | head -n 1 || true)"
-  if [ -z "$CLOUDFLARED_SRC" ]; then
+  local src
+  src="$(find "$TOOLS_TMP/cloudflared-unpack" -type f -name cloudflared | head -n 1 || true)"
+  if [ -z "$src" ]; then
     echo "ERROR: no pude extraer cloudflared."
     exit 1
   fi
   rm -f "$TOOLS_BIN/cloudflared"
-  cp "$CLOUDFLARED_SRC" "$TOOLS_BIN/cloudflared"
+  cp "$src" "$TOOLS_BIN/cloudflared"
   chmod +x "$TOOLS_BIN/cloudflared"
   xattr -dr com.apple.quarantine "$TOOLS_BIN/cloudflared" 2>/dev/null || true
   rm -rf "$TOOLS_TMP/cloudflared-unpack" "$TOOLS_TMP/cloudflared.tgz"
+}
+
+install_cloudflared_macos_intel() {
+  echo "cloudflared no encontrado o incompatible. Instalando binario local para macOS Intel..."
+  require_free_mb 250
+  local os_version
+  os_version="$(sw_vers -productVersion 2>/dev/null || true)"
+  if [[ "$os_version" == 10.15* ]]; then
+    echo "→ Catalina detectado: usando cloudflared 2024.12.2 compatible con Intel antiguo."
+    install_cloudflared_from_url "https://github.com/cloudflare/cloudflared/releases/download/2024.12.2/cloudflared-darwin-amd64.tgz"
+  else
+    install_cloudflared_from_url "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz"
+  fi
 }
 
 OS_NAME="$(uname -s)"
@@ -108,13 +121,18 @@ if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; 
   fi
 fi
 
-if ! command -v cloudflared >/dev/null 2>&1; then
+if ! command -v cloudflared >/dev/null 2>&1 || ! cloudflared --version >/dev/null 2>&1; then
   if [ "$OS_NAME" = "Darwin" ] && [ "$ARCH_NAME" = "x86_64" ]; then
     install_cloudflared_macos_intel
   else
-    echo "ERROR: cloudflared no está instalado. Instalalo y volvé a ejecutar este script."
+    echo "ERROR: cloudflared no está instalado o no puede ejecutarse."
     exit 1
   fi
+fi
+
+if ! cloudflared --version >/dev/null 2>&1; then
+  echo "ERROR: cloudflared se descargó pero macOS no puede ejecutarlo."
+  exit 1
 fi
 
 echo "✓ FFmpeg: $(ffmpeg -version 2>/dev/null | head -n 1)"
@@ -123,8 +141,6 @@ echo "✓ Cloudflared: $(cloudflared --version 2>/dev/null | head -n 1)"
 echo "✓ Python: $(python3 --version 2>&1)"
 echo "✓ Espacio libre: $(free_mb) MB"
 
-# The scientific Python stack is much larger than the helper binaries.
-# Stop before pip fills an already-small disk, and install without cache.
 require_free_mb 1200
 
 if [ ! -d ".venv" ]; then
@@ -158,7 +174,7 @@ if curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
   echo "✓ Worker ya estaba activo en http://127.0.0.1:$PORT"
 else
   echo "Iniciando AI Music Video Studio worker..."
-  PORT="$PORT" python -m app.main_v2 >"$LOG_DIR/worker.log" 2>&1 &
+  python -m uvicorn app.main_v2:app --host 0.0.0.0 --port "$PORT" >"$LOG_DIR/worker.log" 2>&1 &
   WORKER_PID=$!
   for _ in $(seq 1 30); do
     if curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
@@ -168,7 +184,7 @@ else
   done
   if ! curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
     echo "ERROR: el worker no arrancó. Log: $LOG_DIR/worker.log"
-    tail -n 40 "$LOG_DIR/worker.log" || true
+    tail -n 60 "$LOG_DIR/worker.log" || true
     exit 1
   fi
   echo "✓ Worker online: http://127.0.0.1:$PORT"

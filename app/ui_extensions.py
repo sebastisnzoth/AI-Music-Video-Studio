@@ -25,6 +25,9 @@ async function autoPipeline(id){
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
+          checkpoint:(cp && cp.value ? cp.value.trim() : ''),
+          image_steps:24,
+          image_cfg:6.0,
           fps:24,
           use_face_refine:true,
           mouth_mask:true,
@@ -48,7 +51,8 @@ async function autoPipeline(id){
       if(j.auto_state==='blocked' || j.auto_state==='failed'){
         throw new Error(j.last_error||`Pipeline ${j.auto_state}`);
       }
-      await sleepAuto(j.auto_state==='waiting_video'?2500:400);
+      const waiting = j.auto_state==='waiting_video' || j.auto_state==='waiting_image';
+      await sleepAuto(waiting?2500:400);
     }
     throw new Error('El Auto Pipeline superó el límite de seguimiento en el navegador. Podés pulsarlo otra vez para reanudar.');
   }catch(err){

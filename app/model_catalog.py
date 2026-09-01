@@ -34,6 +34,16 @@ MODELS = (
               ("start_frame", "reference_image", "audio", "prompt"),
               ("image-to-video", "cinematic", "scene_generation"),
               "Workflow-driven local video generation; availability depends on installed models."),
+    ModelSpec("localai-video", "LocalAI Video", "video", "localai", True, True,
+              ("start_frame", "prompt", "audio"),
+              ("image-to-video", "ltx", "unified_local_api"),
+              "Optional LocalAI video backend. Exact generation route is configurable per LocalAI version/backend."),
+    ModelSpec("deep-live-cam", "Deep-Live-Cam", "identity_refine", "local", True, True,
+              ("reference_image", "video"), ("face_swap", "identity_refinement", "mouth_mask"),
+              "Optional face refinement stage before lip-sync."),
+    ModelSpec("duix-avatar", "Duix Avatar", "avatar", "local", True, True,
+              ("video", "audio"), ("digital_human", "lip_sync", "avatar"),
+              "Optional fully local avatar backend; practical deployment expects NVIDIA hardware and substantial disk/RAM."),
     ModelSpec("wav2lip", "Wav2Lip", "lipsync", "local", True, True,
               ("video", "audio"), ("lip_sync", "performance"),
               "Lightweight local singing close-up fallback."),
@@ -43,6 +53,13 @@ MODELS = (
     ModelSpec("real-esrgan", "Real-ESRGAN", "upscale", "local", True, True,
               ("image", "video"), ("upscale", "detail_recovery"),
               "Fast local upscale option."),
+    ModelSpec("hyperframes", "HyperFrames", "compositor", "local", True, True,
+              ("video", "audio", "captions", "html"),
+              ("deterministic_render", "motion_graphics", "beat_sync", "captions"),
+              "Optional Node.js compositor for deterministic overlays, titles and beat-synced graphics."),
+    ModelSpec("srs", "SRS", "streaming", "local", True, True,
+              ("video", "audio"), ("webrtc", "rtmp", "hls", "preview_stream"),
+              "Optional realtime preview/stream server; not a generation model."),
 )
 
 
@@ -60,7 +77,7 @@ def get_model(model_id: str) -> dict[str, Any] | None:
 def choose_for_scene(scene: dict[str, Any]) -> dict[str, str]:
     needs_lipsync = bool(scene.get("needs_lipsync"))
     strategy = str(scene.get("strategy", "narrative"))
-    identity_model = "ipadapter" if strategy.startswith("performance") else "ipadapter"
+    identity_model = "ipadapter"
     lipsync_model = "wav2lip" if needs_lipsync else "none"
     if strategy == "abstract":
         identity_model = "none"
@@ -69,6 +86,9 @@ def choose_for_scene(scene: dict[str, Any]) -> dict[str, str]:
         "identity_model": identity_model,
         "image_model": "comfyui-image",
         "video_model": "comfyui-video",
+        "video_model_fallback": "localai-video",
+        "identity_refine_model": "deep-live-cam" if identity_model != "none" else "none",
         "lipsync_model": lipsync_model,
         "upscale_model": "real-esrgan",
+        "compositor": "ffmpeg",
     }

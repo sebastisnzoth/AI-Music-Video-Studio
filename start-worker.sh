@@ -10,35 +10,76 @@ VERCEL_ORIGIN="${VERCEL_ORIGIN:-https://ai-music-video-studio-three.vercel.app}"
 LOG_DIR="$ROOT/.logs"
 TOOLS_BIN="$ROOT/.tools/bin"
 TOOLS_TMP="$ROOT/.tools/tmp"
-mkdir -p "$LOG_DIR" "$TOOLS_BIN" "$TOOLS_TMP"
+mkdir -p "$LOG_DIR" "$TOOLS_BIN"
+rm -rf "$TOOLS_TMP"
+mkdir -p "$TOOLS_TMP"
 export PATH="$TOOLS_BIN:$PATH"
+
+free_mb() {
+  df -Pk "$ROOT" | awk 'NR==2 {print int($4/1024)}'
+}
+
+require_free_mb() {
+  local needed="$1"
+  local available
+  available="$(free_mb)"
+  if [ "$available" -lt "$needed" ]; then
+    echo "ERROR: espacio insuficiente en disco."
+    echo "  Libre: ${available} MB"
+    echo "  Recomendado para continuar: al menos ${needed} MB"
+    echo
+    echo "Podés liberar cachés seguras con:"
+    echo "  rm -rf ~/Library/Caches/Homebrew/*"
+    echo "  rm -rf ~/Library/Caches/pip/* 2>/dev/null || true"
+    echo "Luego comprobá con: df -h /"
+    exit 1
+  fi
+}
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "ERROR: python3 no está instalado."
   exit 1
 fi
 
-install_ffmpeg_macos_intel() {
-  echo "FFmpeg/ffprobe no encontrados. Instalando binarios locales para macOS Intel..."
-  rm -f "$TOOLS_TMP"/ffmpeg*.zip "$TOOLS_TMP"/ffprobe*.zip
-  curl -fLJ "https://evermeet.cx/ffmpeg/getrelease/zip" -o "$TOOLS_TMP/ffmpeg.zip"
-  curl -fLJ "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" -o "$TOOLS_TMP/ffprobe.zip"
-  unzip -qo "$TOOLS_TMP/ffmpeg.zip" -d "$TOOLS_TMP/ffmpeg-unpack"
-  unzip -qo "$TOOLS_TMP/ffprobe.zip" -d "$TOOLS_TMP/ffprobe-unpack"
-  FFMPEG_SRC="$(find "$TOOLS_TMP/ffmpeg-unpack" -type f -name ffmpeg -perm -111 | head -n 1 || true)"
-  FFPROBE_SRC="$(find "$TOOLS_TMP/ffprobe-unpack" -type f -name ffprobe -perm -111 | head -n 1 || true)"
-  if [ -z "$FFMPEG_SRC" ] || [ -z "$FFPROBE_SRC" ]; then
-    echo "ERROR: no pude extraer ffmpeg/ffprobe."
+install_one_evermeet_binary() {
+  local name="$1"
+  local url="$2"
+  local archive="$TOOLS_TMP/${name}.zip"
+  local unpack="$TOOLS_TMP/${name}-unpack"
+
+  rm -rf "$archive" "$unpack"
+  mkdir -p "$unpack"
+  curl -fLJ "$url" -o "$archive"
+  unzip -qo "$archive" -d "$unpack"
+  local src
+  src="$(find "$unpack" -type f -name "$name" -perm -111 | head -n 1 || true)"
+  if [ -z "$src" ]; then
+    echo "ERROR: no pude extraer $name."
     exit 1
   fi
-  cp "$FFMPEG_SRC" "$TOOLS_BIN/ffmpeg"
-  cp "$FFPROBE_SRC" "$TOOLS_BIN/ffprobe"
-  chmod +x "$TOOLS_BIN/ffmpeg" "$TOOLS_BIN/ffprobe"
-  xattr -dr com.apple.quarantine "$TOOLS_BIN/ffmpeg" "$TOOLS_BIN/ffprobe" 2>/dev/null || true
+  rm -f "$TOOLS_BIN/$name"
+  cp "$src" "$TOOLS_BIN/$name"
+  chmod +x "$TOOLS_BIN/$name"
+  xattr -dr com.apple.quarantine "$TOOLS_BIN/$name" 2>/dev/null || true
+  rm -rf "$archive" "$unpack"
+}
+
+install_ffmpeg_macos_intel() {
+  echo "FFmpeg/ffprobe no encontrados. Instalando binarios locales para macOS Intel..."
+  require_free_mb 350
+  if ! command -v ffmpeg >/dev/null 2>&1; then
+    echo "→ Descargando FFmpeg..."
+    install_one_evermeet_binary "ffmpeg" "https://evermeet.cx/ffmpeg/getrelease/zip"
+  fi
+  if ! command -v ffprobe >/dev/null 2>&1; then
+    echo "→ Descargando FFprobe..."
+    install_one_evermeet_binary "ffprobe" "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"
+  fi
 }
 
 install_cloudflared_macos_intel() {
   echo "cloudflared no encontrado. Instalando binario local para macOS Intel..."
+  require_free_mb 250
   rm -rf "$TOOLS_TMP/cloudflared-unpack" "$TOOLS_TMP/cloudflared.tgz"
   mkdir -p "$TOOLS_TMP/cloudflared-unpack"
   curl -fL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz" -o "$TOOLS_TMP/cloudflared.tgz"
@@ -48,9 +89,11 @@ install_cloudflared_macos_intel() {
     echo "ERROR: no pude extraer cloudflared."
     exit 1
   fi
+  rm -f "$TOOLS_BIN/cloudflared"
   cp "$CLOUDFLARED_SRC" "$TOOLS_BIN/cloudflared"
   chmod +x "$TOOLS_BIN/cloudflared"
   xattr -dr com.apple.quarantine "$TOOLS_BIN/cloudflared" 2>/dev/null || true
+  rm -rf "$TOOLS_TMP/cloudflared-unpack" "$TOOLS_TMP/cloudflared.tgz"
 }
 
 OS_NAME="$(uname -s)"
@@ -78,6 +121,11 @@ echo "✓ FFmpeg: $(ffmpeg -version 2>/dev/null | head -n 1)"
 echo "✓ FFprobe: $(ffprobe -version 2>/dev/null | head -n 1)"
 echo "✓ Cloudflared: $(cloudflared --version 2>/dev/null | head -n 1)"
 echo "✓ Python: $(python3 --version 2>&1)"
+echo "✓ Espacio libre: $(free_mb) MB"
+
+# The scientific Python stack is much larger than the helper binaries.
+# Stop before pip fills an already-small disk, and install without cache.
+require_free_mb 1200
 
 if [ ! -d ".venv" ]; then
   echo "Creando entorno Python..."
@@ -85,8 +133,8 @@ if [ ! -d ".venv" ]; then
 fi
 
 source .venv/bin/activate
-python -m pip install --upgrade pip >/dev/null
-pip install -r requirements.txt >/dev/null
+python -m pip install --upgrade --no-cache-dir pip >/dev/null
+pip install --no-cache-dir -r requirements.txt >/dev/null
 
 export COMFYUI_URL
 export WEB_ORIGINS="${WEB_ORIGINS:-$VERCEL_ORIGIN,http://127.0.0.1:$PORT,http://localhost:$PORT}"
@@ -99,6 +147,7 @@ else
 fi
 
 cleanup() {
+  rm -rf "$TOOLS_TMP" >/dev/null 2>&1 || true
   if [ -n "${WORKER_PID:-}" ] && kill -0 "$WORKER_PID" >/dev/null 2>&1; then
     kill "$WORKER_PID" >/dev/null 2>&1 || true
   fi

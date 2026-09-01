@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "env": {
+    "RENDER_WORKER_URL": "https://fool-appropriations-votes-ware.trycloudflare.com"
+  },
   "functions": {
     "app/vercel_app.py": {
       "maxDuration": 60,

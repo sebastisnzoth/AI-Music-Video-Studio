@@ -4,6 +4,8 @@ from fastapi import APIRouter, Body, HTTPException
 from fastapi.responses import FileResponse
 
 from .assembly import assemble_generated_video
+from .batch import generation_queue, prepare_batch
+from .captions import build_lyrics_srt, burn_subtitles
 from .identity import build_identity_profile
 from .local_pipeline import detect_local_tools, run_upscale, run_wav2lip, scene_pipeline_status
 from .pipeline import PROJECTS
@@ -92,6 +94,42 @@ def project_review(project_id: str):
         raise HTTPException(404, str(exc)) from exc
 
 
+@router.post("/projects/{project_id}/batch/prepare")
+def batch_prepare(project_id: str, payload: dict = Body(default={})):
+    try:
+        return prepare_batch(project_id, only_unprepared=bool(payload.get("only_unprepared", True)))
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/projects/{project_id}/batch/queue")
+def batch_queue(project_id: str):
+    try:
+        return generation_queue(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/captions/srt")
+def captions_srt(project_id: str):
+    try:
+        return build_lyrics_srt(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/captions/burn")
+def captions_burn(project_id: str, payload: dict = Body(default={})):
+    try:
+        return burn_subtitles(project_id, source_name=str(payload.get("source_name", "final-ai.mp4")))
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post("/projects/{project_id}/assemble-ai")
 def assemble_ai(project_id: str, payload: dict = Body(default={})):
     try:
@@ -108,3 +146,11 @@ def download_ai(project_id: str):
     if not path.exists():
         raise HTTPException(404, "AI master not available")
     return FileResponse(path, media_type="video/mp4", filename=f"{project_id}-ai-music-video.mp4")
+
+
+@router.get("/projects/{project_id}/download-subtitled")
+def download_subtitled(project_id: str):
+    path = PROJECTS / project_id / "final-subtitled.mp4"
+    if not path.exists():
+        raise HTTPException(404, "Subtitled master not available")
+    return FileResponse(path, media_type="video/mp4", filename=f"{project_id}-subtitled.mp4")

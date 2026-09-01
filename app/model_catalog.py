@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any
 
 
@@ -18,72 +18,31 @@ class ModelSpec:
 
 
 MODELS = (
-    ModelSpec(
-        id="reference-render",
-        label="Reference Render",
-        kind="video",
-        backend="ffmpeg",
-        local=True,
-        free_core=True,
-        roles=("reference_image", "reference_video", "audio"),
-        strengths=("fallback", "preview", "timing"),
-        notes="Always available when FFmpeg is installed.",
-    ),
-    ModelSpec(
-        id="comfyui-image",
-        label="ComfyUI Image",
-        kind="image",
-        backend="comfyui",
-        local=True,
-        free_core=True,
-        roles=("reference_image", "prompt"),
-        strengths=("storyboard", "identity", "style"),
-        notes="Workflow-driven local image generation.",
-    ),
-    ModelSpec(
-        id="comfyui-video",
-        label="ComfyUI Video",
-        kind="video",
-        backend="comfyui",
-        local=True,
-        free_core=True,
-        roles=("start_frame", "reference_image", "audio", "prompt"),
-        strengths=("image-to-video", "cinematic", "scene_generation"),
-        notes="Workflow-driven local video generation. Model availability depends on installed ComfyUI workflows and weights.",
-    ),
-    ModelSpec(
-        id="wav2lip",
-        label="Wav2Lip",
-        kind="lipsync",
-        backend="local",
-        local=True,
-        free_core=True,
-        roles=("video", "audio"),
-        strengths=("lip_sync", "performance"),
-        notes="Lightweight fallback for singing close-ups.",
-    ),
-    ModelSpec(
-        id="musetalk",
-        label="MuseTalk",
-        kind="lipsync",
-        backend="local",
-        local=True,
-        free_core=True,
-        roles=("video", "audio"),
-        strengths=("lip_sync", "portrait"),
-        notes="Optional local lip-sync backend.",
-    ),
-    ModelSpec(
-        id="real-esrgan",
-        label="Real-ESRGAN",
-        kind="upscale",
-        backend="local",
-        local=True,
-        free_core=True,
-        roles=("image", "video"),
-        strengths=("upscale", "detail_recovery"),
-        notes="Fast local upscale option.",
-    ),
+    ModelSpec("reference-render", "Reference Render", "video", "ffmpeg", True, True,
+              ("reference_image", "reference_video", "audio"), ("fallback", "preview", "timing"),
+              "Always available when FFmpeg is installed."),
+    ModelSpec("comfyui-image", "ComfyUI Image", "image", "comfyui", True, True,
+              ("reference_image", "prompt"), ("storyboard", "style"),
+              "Workflow-driven local image generation."),
+    ModelSpec("ipadapter", "IPAdapter / FaceID", "identity", "comfyui", True, True,
+              ("reference_image", "prompt"), ("identity", "face_consistency", "style_transfer"),
+              "Preferred identity-conditioning path when compatible ComfyUI nodes/models are installed."),
+    ModelSpec("instantid", "InstantID", "identity", "comfyui", True, True,
+              ("reference_image", "prompt"), ("identity", "portrait", "face_consistency"),
+              "Alternative face-identity conditioning path for compatible SDXL workflows."),
+    ModelSpec("comfyui-video", "ComfyUI Video", "video", "comfyui", True, True,
+              ("start_frame", "reference_image", "audio", "prompt"),
+              ("image-to-video", "cinematic", "scene_generation"),
+              "Workflow-driven local video generation; availability depends on installed models."),
+    ModelSpec("wav2lip", "Wav2Lip", "lipsync", "local", True, True,
+              ("video", "audio"), ("lip_sync", "performance"),
+              "Lightweight local singing close-up fallback."),
+    ModelSpec("musetalk", "MuseTalk", "lipsync", "local", True, True,
+              ("video", "audio"), ("lip_sync", "portrait"),
+              "Optional higher-quality local lip-sync backend when hardware allows."),
+    ModelSpec("real-esrgan", "Real-ESRGAN", "upscale", "local", True, True,
+              ("image", "video"), ("upscale", "detail_recovery"),
+              "Fast local upscale option."),
 )
 
 
@@ -99,17 +58,17 @@ def get_model(model_id: str) -> dict[str, Any] | None:
 
 
 def choose_for_scene(scene: dict[str, Any]) -> dict[str, str]:
-    """Pick a free/local default toolchain for a directed scene."""
     needs_lipsync = bool(scene.get("needs_lipsync"))
     strategy = str(scene.get("strategy", "narrative"))
-    image_model = "comfyui-image"
-    video_model = "comfyui-video"
+    identity_model = "ipadapter" if strategy.startswith("performance") else "ipadapter"
     lipsync_model = "wav2lip" if needs_lipsync else "none"
     if strategy == "abstract":
+        identity_model = "none"
         lipsync_model = "none"
     return {
-        "image_model": image_model,
-        "video_model": video_model,
+        "identity_model": identity_model,
+        "image_model": "comfyui-image",
+        "video_model": "comfyui-video",
         "lipsync_model": lipsync_model,
         "upscale_model": "real-esrgan",
     }

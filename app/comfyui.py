@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 import requests
 
-DEFAULT_BASE_URL = "http://127.0.0.1:8188"
+DEFAULT_BASE_URL = os.getenv("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/")
 
 
 class ComfyUIError(RuntimeError):
@@ -20,6 +21,64 @@ def is_online(base_url: str = DEFAULT_BASE_URL, timeout: float = 1.0) -> bool:
         return requests.get(f"{base_url.rstrip('/')}/system_stats", timeout=timeout).ok
     except requests.RequestException:
         return False
+
+
+def _checkpoint_names_from_object_info(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    node = payload.get("CheckpointLoaderSimple", payload)
+    if not isinstance(node, dict):
+        return []
+    required = node.get("input", {}).get("required", {})
+    if not isinstance(required, dict):
+        return []
+    spec = required.get("ckpt_name")
+    if not isinstance(spec, list) or not spec:
+        return []
+    values = spec[0] if isinstance(spec[0], list) else spec
+    return sorted({str(value) for value in values if isinstance(value, str) and value.strip()})
+
+
+def list_checkpoints(base_url: str = DEFAULT_BASE_URL, timeout: float = 4.0) -> list[str]:
+    """Return checkpoint names exactly as ComfyUI exposes them.
+
+    The primary source is CheckpointLoaderSimple's object metadata. A models
+    endpoint is used as a fallback for compatible ComfyUI versions.
+    """
+    base = base_url.rstrip("/")
+    errors: list[str] = []
+
+    try:
+        response = requests.get(f"{base}/object_info/CheckpointLoaderSimple", timeout=timeout)
+        if response.ok:
+            names = _checkpoint_names_from_object_info(response.json())
+            if names:
+                return names
+        else:
+            errors.append(f"object_info HTTP {response.status_code}")
+    except (requests.RequestException, ValueError) as exc:
+        errors.append(f"object_info: {exc}")
+
+    try:
+        response = requests.get(f"{base}/models/checkpoints", timeout=timeout)
+        if response.ok:
+            data = response.json()
+            if isinstance(data, list):
+                return sorted({str(value) for value in data if isinstance(value, str) and value.strip()})
+            if isinstance(data, dict):
+                values = data.get("models") or data.get("checkpoints") or data.get("items") or []
+                if isinstance(values, list):
+                    return sorted({str(value) for value in values if isinstance(value, str) and value.strip()})
+        else:
+            errors.append(f"models HTTP {response.status_code}")
+    except (requests.RequestException, ValueError) as exc:
+        errors.append(f"models: {exc}")
+
+    if not is_online(base_url=base, timeout=min(timeout, 1.5)):
+        raise ComfyUIError("ComfyUI no está accesible")
+    if errors:
+        raise ComfyUIError("No se pudo leer la lista de checkpoints: " + " | ".join(errors))
+    return []
 
 
 def load_workflow(path: Path) -> dict[str, Any]:

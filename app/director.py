@@ -52,6 +52,23 @@ CAMERA_BY_ENERGY = {
     "peak": "rapid but readable camera changes, orbital motion and impact cuts on downbeats",
 }
 
+ENERGY_LABELS = {"low": 0.25, "medium": 0.5, "high": 0.75, "peak": 0.95}
+
+
+def _energy_value(value: Any) -> float:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ENERGY_LABELS:
+            return ENERGY_LABELS[normalized]
+        try:
+            return float(normalized)
+        except ValueError:
+            return 0.5
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.5
+
 
 def _energy_band(value: float) -> str:
     if value >= 0.86:
@@ -73,7 +90,7 @@ def _genre(style: str) -> str:
 
 def classify_scene_strategy(section: str, lyrics: str, energy: float) -> str:
     sec = (section or "").lower()
-    if lyrics.strip() and sec in {"verse", "chorus", "refrain", "pre-chorus", "bridge"}:
+    if lyrics.strip() and sec in {"verse", "chorus", "refrain", "pre-chorus", "bridge", "scene"}:
         return "performance" if energy >= 0.42 else "performance_intimate"
     if sec in {"intro", "outro", "instrumental", "interlude"}:
         return "narrative" if energy < 0.68 else "abstract"
@@ -82,7 +99,7 @@ def classify_scene_strategy(section: str, lyrics: str, energy: float) -> str:
 
 def build_director_prompt(scene: dict[str, Any], style: str) -> dict[str, Any]:
     language = GENRE_LANGUAGE[_genre(style)]
-    energy = float(scene.get("energy", 0.5) or 0.5)
+    energy = _energy_value(scene.get("energy", 0.5))
     band = _energy_band(energy)
     section = str(scene.get("section", "scene"))
     lyrics = str(scene.get("lyrics", "")).strip()
@@ -99,9 +116,7 @@ def build_director_prompt(scene: dict[str, Any], style: str) -> dict[str, Any]:
     else:
         hook = "Open with one immediately readable image and preserve continuity with the surrounding shots."
 
-    subject_rule = (
-        "Keep the reference artist identity consistent: same face, age, hair, body proportions and wardrobe continuity."
-    )
+    subject_rule = "Keep the reference artist identity consistent: same face, age, hair, body proportions and wardrobe continuity."
     performance_rule = (
         "If the artist is visibly singing, frame the mouth clearly enough for lip-sync and avoid occluding the lower face."
         if strategy.startswith("performance")
@@ -109,19 +124,19 @@ def build_director_prompt(scene: dict[str, Any], style: str) -> dict[str, Any]:
     )
 
     prompt = (
-        f"Music-video shot from {start:.2f}s to {end:.2f}s. "
-        f"Section: {section}. Strategy: {strategy}. Energy: {band}. "
-        f"Style: {style}. "
+        f"Music-video shot from {start:.2f}s to {end:.2f}s. Section: {section}. "
+        f"Strategy: {strategy}. Energy: {band}. Style: {style}. "
         f"Palette: {language.palette}. Lighting: {language.lighting}. "
         f"Camera: {CAMERA_BY_ENERGY[band]}; overall camera language: {language.camera}. "
         f"Texture: {language.texture}. {hook} {subject_rule} {performance_rule} "
-        f"Keep motion physically coherent, avoid face deformation, duplicate people, warped hands, flicker, text and logos."
+        "Keep motion physically coherent, avoid face deformation, duplicate people, warped hands, flicker, text and logos."
     )
     if lyrics:
         prompt += f" Emotional meaning of the lyric: {lyrics}"
 
     return {
         "strategy": strategy,
+        "energy_value": round(energy, 3),
         "energy_band": band,
         "needs_lipsync": strategy.startswith("performance") and bool(lyrics),
         "camera": CAMERA_BY_ENERGY[band],

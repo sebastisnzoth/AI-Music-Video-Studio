@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import random
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,81 @@ def _import_video_output(project_id: str, scene_id: int, item: dict[str, str]) -
     return target
 
 
+def _video_dimensions(meta: dict[str, Any]) -> tuple[int, int]:
+    aspect = str(meta.get("aspect", "16:9"))
+    quality = str(meta.get("quality", "preview"))
+    if aspect == "9:16":
+        return (432, 768) if quality == "preview" else (576, 1024)
+    return (768, 432) if quality == "preview" else (1024, 576)
+
+
+def _ffmpeg_motion_fallback(project_id: str, scene_id: int, fps: int) -> dict[str, Any]:
+    """Create a lightweight cinematic motion clip from the generated image.
+
+    This keeps the full videoclip pipeline usable on CPU-only Macs even when
+    an image-to-video ComfyUI workflow/model is not installed.
+    """
+    meta = load_project(project_id)
+    scene = _scene(meta, scene_id)
+    generated_image = Path(str(scene.get("generated_image") or ""))
+    if not generated_image.exists():
+        raise FileNotFoundError("generated_image is required before video fallback")
+
+    width, height = _video_dimensions(meta)
+    duration = max(1.0, float(scene.get("duration", 5.0)))
+    actual_fps = max(1, int(fps))
+    scene_dir = PROJECTS / project_id / "scenes" / f"{scene_id:03d}"
+    scene_dir.mkdir(parents=True, exist_ok=True)
+    target = scene_dir / "clip-generated.mp4"
+
+    # Slow Ken Burns-style zoom. It is deterministic, inexpensive and works
+    # with the ffmpeg binary already installed by start-worker.sh.
+    vf = (
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},"
+        f"zoompan=z='min(zoom+0.0008,1.08)':d=1:s={width}x{height}:fps={actual_fps},"
+        "format=yuv420p"
+    )
+    cmd = [
+        "ffmpeg", "-y", "-loop", "1", "-i", str(generated_image),
+        "-vf", vf,
+        "-t", f"{duration:.3f}",
+        "-r", str(actual_fps),
+        "-an",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "20",
+        "-pix_fmt", "yuv420p",
+        str(target),
+    ]
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0 or not target.exists():
+        raise RuntimeError("FFmpeg video fallback failed: " + proc.stderr[-1400:])
+
+    meta = load_project(project_id)
+    scene = _scene(meta, scene_id)
+    scene["status"] = "clip_ready"
+    scene["video_generation_backend"] = "ffmpeg-motion-fallback"
+    scene["generated_clip"] = str(target)
+    scene["generated_clip_source"] = "ffmpeg-motion-fallback"
+    scene["video_generation_settings"] = {
+        "fallback": True,
+        "fps": actual_fps,
+        "duration": duration,
+        "width": width,
+        "height": height,
+    }
+    save_json(PROJECTS / project_id / "project.json", meta)
+    return {
+        "project_id": project_id,
+        "scene_id": scene_id,
+        "backend": "ffmpeg-motion-fallback",
+        "status": "clip_ready",
+        "generated_clip": str(target),
+        "settings": scene["video_generation_settings"],
+    }
+
+
 def queue_scene_video(
     project_id: str,
     scene_id: int,
@@ -71,7 +147,10 @@ def queue_scene_video(
         raise FileNotFoundError("generated_image is required before image-to-video")
 
     selected_workflow = workflow_path or Path(os.getenv("COMFYUI_VIDEO_WORKFLOW", str(DEFAULT_VIDEO_WORKFLOW)))
+    allow_fallback = os.getenv("VIDEO_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}
     if not selected_workflow.exists():
+        if allow_fallback:
+            return _ffmpeg_motion_fallback(project_id, scene_id, fps)
         raise FileNotFoundError(
             f"Video workflow not found: {selected_workflow}. Export a ComfyUI API workflow and set COMFYUI_VIDEO_WORKFLOW."
         )
@@ -91,8 +170,13 @@ def queue_scene_video(
         "scene_id": f"{scene_id:03d}",
     }
 
-    workflow = render_workflow(load_workflow(selected_workflow), variables)
-    prompt_id = queue_prompt(workflow, base_url=base_url)
+    try:
+        workflow = render_workflow(load_workflow(selected_workflow), variables)
+        prompt_id = queue_prompt(workflow, base_url=base_url)
+    except (ComfyUIError, FileNotFoundError, ValueError, KeyError):
+        if allow_fallback:
+            return _ffmpeg_motion_fallback(project_id, scene_id, fps)
+        raise
 
     scene["status"] = "generating_video"
     scene["video_generation_backend"] = "comfyui"
@@ -124,8 +208,6 @@ def refresh_scene_video(project_id: str, scene_id: int, base_url: str = DEFAULT_
     try:
         history = get_history(str(prompt_id), base_url=base_url)
     except ComfyUIError as exc:
-        # En CPU ComfyUI puede quedar ocupado varios segundos. No cortar el
-        # pipeline: mantener estado de generación y reintentar en la siguiente consulta.
         return {
             "project_id": project_id,
             "scene_id": scene_id,

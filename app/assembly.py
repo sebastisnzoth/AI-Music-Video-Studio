@@ -7,6 +7,9 @@ from .pipeline import PROJECTS, load_project, run, save_json
 
 
 def _best_clip(scene: dict[str, Any]) -> Path | None:
+    approved = scene.get("approved_asset")
+    if approved and Path(str(approved)).exists():
+        return Path(str(approved))
     for key in ("upscaled_clip", "lipsync_clip", "generated_clip"):
         value = scene.get(key)
         if value and Path(str(value)).exists():
@@ -65,6 +68,7 @@ def assemble_generated_video(project_id: str, approved_only: bool = False) -> di
         "scene_count": len(selected),
         "missing_scene_ids": missing,
         "approved_only": approved_only,
+        "selection_policy": "approved_asset > upscaled > lipsync > generated",
     }
     save_json(project_dir / "project.json", meta)
     return {

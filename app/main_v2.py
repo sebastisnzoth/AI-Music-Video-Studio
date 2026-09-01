@@ -12,10 +12,15 @@ from .ui_extensions import enhance_page
 app = main_module.app
 main_module.PAGE = enhance_page(main_module.PAGE)
 
-raw_origins = os.getenv(
-    "WEB_ORIGINS",
-    "http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:3000,http://localhost:3000",
-)
+DEFAULT_WEB_ORIGINS = ",".join([
+    "http://127.0.0.1:8080",
+    "http://localhost:8080",
+    "http://127.0.0.1:3000",
+    "http://localhost:3000",
+    "https://ai-music-video-studio-three.vercel.app",
+    "https://ai-music-video-studio-sebastisnzoths-projects.vercel.app",
+])
+raw_origins = os.getenv("WEB_ORIGINS", DEFAULT_WEB_ORIGINS)
 origins = [item.strip() for item in raw_origins.split(",") if item.strip()]
 allow_all = "*" in origins
 app.add_middleware(
@@ -28,4 +33,4 @@ app.add_middleware(
 
 app.include_router(pipeline_router)
 app.include_router(integrations_router)
-app.version = "0.12.0"
+app.version = "0.12.2"

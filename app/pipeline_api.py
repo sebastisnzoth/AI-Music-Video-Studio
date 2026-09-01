@@ -42,6 +42,9 @@ def auto_pipeline(project_id: str, scene_id: int, payload: dict = Body(default={
         return advance_scene_pipeline(
             project_id,
             scene_id,
+            checkpoint=str(payload.get("checkpoint", "") or "").strip() or None,
+            image_steps=int(payload.get("image_steps", 24)),
+            image_cfg=float(payload.get("image_cfg", 6.0)),
             fps=int(payload.get("fps", 24)),
             use_face_refine=bool(payload.get("use_face_refine", True)),
             mouth_mask=bool(payload.get("mouth_mask", True)),

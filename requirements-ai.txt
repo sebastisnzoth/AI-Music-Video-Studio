@@ -1,0 +1,7 @@
+# Optional local-AI dependencies
+# Install only when enabling music analysis/transcription and later lip-sync.
+
+-r requirements.txt
+librosa>=0.10.2
+soundfile>=0.12.1
+faster-whisper>=1.1.0

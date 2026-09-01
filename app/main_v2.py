@@ -10,4 +10,4 @@ main_module.PAGE = enhance_page(main_module.PAGE)
 
 app.include_router(pipeline_router)
 app.include_router(integrations_router)
-app.version = "0.11.0"
+app.version = "0.11.1"

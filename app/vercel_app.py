@@ -78,7 +78,7 @@ PAGE = r'''<!doctype html>
 const SERVER_WORKER=__SERVER_WORKER__;
 const f=document.querySelector('#form'),s=document.querySelector('#status'),sb=document.querySelector('#storyboard'),pv=document.querySelector('#preview'),cp=document.querySelector('#checkpoint'),badge=document.querySelector('#workerBadge'),modelHint=document.querySelector('#modelHint'),workerInput=document.querySelector('#workerUrl'),connectBtn=document.querySelector('#connectBtn'),disconnectBtn=document.querySelector('#disconnectBtn'),createBtn=document.querySelector('#createBtn'),refreshModels=document.querySelector('#refreshModels'),connectionHint=document.querySelector('#connectionHint');
 let current=null,WORKER='';const running=new Set();
-function esc(x){return String(x??'').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]||c))}
+function esc(x){const d=document.createElement('div');d.textContent=String(x??'');return d.innerHTML}
 function normalizeWorker(value){let v=String(value||'').trim();if(!v)return'';if(!/^https?:\/\//i.test(v))v='https://'+v;return v.replace(/\/+$/,'')}
 function w(path){return WORKER+path}
 function resetModels(message='Conectá el worker para ver modelos'){cp.disabled=true;refreshModels.disabled=true;cp.innerHTML=`<option value="">${esc(message)}</option>`}

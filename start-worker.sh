@@ -191,9 +191,20 @@ else
 fi
 
 echo
-echo "Abriendo túnel HTTPS público..."
-echo "Cuando aparezca una URL https://xxxxx.trycloudflare.com, copiala y pegala en 'Conectar render worker' en Vercel."
+echo "Abriendo túnel HTTPS público estable (HTTP/2)..."
+echo "Cuando aparezca una URL https://xxxxx.trycloudflare.com, usala como RENDER_WORKER_URL en Vercel."
 echo "Vercel: https://ai-music-video-studio-three.vercel.app"
 echo
 
-cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$PORT" 2>&1 | tee "$LOG_DIR/cloudflared.log"
+# HTTP/2 es más estable que QUIC en macOS Catalina y redes domésticas.
+# Si cloudflared pierde la conexión, se reinicia solo.
+while true; do
+  cloudflared tunnel \
+    --no-autoupdate \
+    --protocol http2 \
+    --url "http://127.0.0.1:$PORT" \
+    2>&1 | tee "$LOG_DIR/cloudflared.log"
+  status=${PIPESTATUS[0]:-1}
+  echo "⚠ Cloudflare Tunnel terminó (código $status). Reintentando en 3 segundos..."
+  sleep 3
+done

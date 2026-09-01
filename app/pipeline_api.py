@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from .assembly import assemble_generated_video
 from .batch import generation_queue, prepare_batch
 from .captions import build_lyrics_srt, burn_subtitles
+from .comfyui import ComfyUIError, is_online, list_checkpoints
 from .identity import build_identity_profile
 from .local_pipeline import detect_local_tools, run_deep_live_cam, run_upscale, run_wav2lip, scene_pipeline_status
 from .orchestrator import advance_scene_pipeline, auto_pipeline_status
@@ -18,6 +19,18 @@ router = APIRouter(prefix="/api")
 @router.get("/local-tools")
 def local_tools():
     return detect_local_tools()
+
+
+@router.get("/comfyui/checkpoints")
+def comfyui_checkpoints():
+    online = is_online()
+    if not online:
+        return {"online": False, "count": 0, "checkpoints": [], "error": "ComfyUI offline"}
+    try:
+        names = list_checkpoints()
+        return {"online": True, "count": len(names), "checkpoints": names, "error": None}
+    except ComfyUIError as exc:
+        return {"online": True, "count": 0, "checkpoints": [], "error": str(exc)}
 
 
 @router.post("/projects/{project_id}/identity")

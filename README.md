@@ -44,6 +44,7 @@ El proyecto ya permite:
 - Subtítulos SRT y burn-in con FFmpeg.
 - Ensamblado final conservando la canción original como audio master.
 - Importar automáticamente el clip generado desde la carpeta `output` de ComfyUI.
+- **Auto Pipeline por escena con un solo botón**, resumible y tolerante a herramientas opcionales faltantes.
 
 No requiere ninguna API paga para funcionar en modo local.
 
@@ -166,6 +167,43 @@ generated_clip
 → revisión/aprobación
 → master
 ```
+
+## Auto Pipeline: un solo botón por escena
+
+Después de tener una `generated_image`, pulsá **✨ Auto Pipeline** en la escena. La web ejecuta una máquina de estados resumible:
+
+```text
+ComfyUI image-to-video
+→ esperar hasta que aparezca clip-generated
+→ Deep-Live-Cam si está disponible
+→ Wav2Lip solo si needs_lipsync=true
+→ Real-ESRGAN si está disponible
+→ registrar una versión
+→ ready_for_review
+```
+
+No auto-aprueba la toma: termina en revisión para que una regeneración no entre al master sin control humano.
+
+Estados principales:
+
+```text
+idle
+waiting_video
+ready_for_review
+blocked
+failed
+```
+
+Endpoints:
+
+```text
+POST /api/projects/{id}/scenes/{scene}/auto-pipeline
+GET  /api/projects/{id}/scenes/{scene}/auto-pipeline/status
+```
+
+El endpoint `POST` es incremental. Si ComfyUI sigue renderizando devuelve `waiting_video`; la interfaz vuelve a llamarlo automáticamente. Por eso el flujo puede reanudarse sin repetir etapas ya terminadas.
+
+Las herramientas de postproceso son opcionales por defecto. Si no existen, se registran como `skipped` y el clip disponible sigue hacia revisión. Para integraciones externas puede activarse `strict_optional=true` para hacer que un fallo de esas etapas detenga el pipeline.
 
 ## Backends opcionales
 

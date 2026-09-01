@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import os
 import random
+import shutil
 from pathlib import Path
 from typing import Any
 
-from .comfyui import DEFAULT_BASE_URL, ComfyUIError, get_history, load_workflow, output_files, queue_prompt, render_workflow
+from .comfyui import DEFAULT_BASE_URL, get_history, load_workflow, output_files, queue_prompt, render_workflow
 from .pipeline import PROJECTS, load_project, save_json
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +18,42 @@ def _scene(meta: dict[str, Any], scene_id: int) -> dict[str, Any]:
     if item is None:
         raise KeyError(scene_id)
     return item
+
+
+def _comfy_output_dir() -> Path | None:
+    explicit = os.getenv("COMFYUI_OUTPUT_DIR")
+    if explicit:
+        return Path(explicit).expanduser()
+    root = os.getenv("COMFYUI_DIR")
+    if root:
+        return Path(root).expanduser() / "output"
+    conventional = Path.home() / "ComfyUI" / "output"
+    return conventional if conventional.exists() else None
+
+
+def _resolve_comfy_file(item: dict[str, str]) -> Path | None:
+    output_dir = _comfy_output_dir()
+    if output_dir is None:
+        return None
+    filename = str(item.get("filename", "")).strip()
+    if not filename:
+        return None
+    subfolder = str(item.get("subfolder", "")).strip()
+    candidate = output_dir / subfolder / filename if subfolder else output_dir / filename
+    return candidate if candidate.exists() else None
+
+
+def _import_video_output(project_id: str, scene_id: int, item: dict[str, str]) -> Path | None:
+    source = _resolve_comfy_file(item)
+    if source is None:
+        return None
+    scene_dir = PROJECTS / project_id / "scenes" / f"{scene_id:03d}"
+    scene_dir.mkdir(parents=True, exist_ok=True)
+    suffix = source.suffix.lower() or ".mp4"
+    target = scene_dir / f"clip-generated{suffix}"
+    if source.resolve() != target.resolve():
+        shutil.copy2(source, target)
+    return target
 
 
 def queue_scene_video(
@@ -91,19 +127,30 @@ def refresh_scene_video(project_id: str, scene_id: int, base_url: str = DEFAULT_
 
     files = output_files(history)
     video_candidates = [f for f in files if f.get("kind") in {"videos", "gifs"}]
+    imported: Path | None = None
     if video_candidates:
-        scene["status"] = "video_ready"
+        for candidate in video_candidates:
+            imported = _import_video_output(project_id, scene_id, candidate)
+            if imported is not None:
+                break
+        scene["status"] = "clip_ready" if imported else "video_ready"
         scene["comfyui_video_outputs"] = video_candidates
+        if imported:
+            scene["generated_clip"] = str(imported)
+            scene["generated_clip_source"] = "comfyui"
     else:
         status_info = history.get("status", {}) if isinstance(history, dict) else {}
         completed = bool(status_info.get("completed", True))
         scene["status"] = "generation_failed" if completed else "generating_video"
         scene["comfyui_video_outputs"] = files
+
     save_json(PROJECTS / project_id / "project.json", meta)
     return {
         "project_id": project_id,
         "scene_id": scene_id,
         "status": scene["status"],
         "outputs": scene.get("comfyui_video_outputs", []),
+        "generated_clip": scene.get("generated_clip"),
+        "output_dir": str(_comfy_output_dir()) if _comfy_output_dir() else None,
         "prompt_id": prompt_id,
     }

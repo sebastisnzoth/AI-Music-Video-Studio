@@ -35,4 +35,4 @@ app.add_middleware(
 app.include_router(project_create_router)
 app.include_router(pipeline_router)
 app.include_router(integrations_router)
-app.version = "0.13.1"
+app.version = "0.13.3"

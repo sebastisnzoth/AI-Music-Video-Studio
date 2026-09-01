@@ -7,6 +7,7 @@ from .assembly import assemble_generated_video
 from .identity import build_identity_profile
 from .local_pipeline import detect_local_tools, run_upscale, run_wav2lip, scene_pipeline_status
 from .pipeline import PROJECTS
+from .review import add_review_comment, add_scene_version, approve_version, review_summary
 
 router = APIRouter(prefix="/api")
 
@@ -50,6 +51,45 @@ def upscale(project_id: str, scene_id: int, payload: dict = Body(default={})):
         raise HTTPException(404, str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(503, str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/scenes/{scene_id}/versions")
+def register_scene_version(project_id: str, scene_id: int, payload: dict = Body(...)):
+    file_path = str(payload.get("file", "")).strip()
+    stage = str(payload.get("stage", "generated")).strip() or "generated"
+    if not file_path:
+        raise HTTPException(400, "file requerido")
+    try:
+        return add_scene_version(project_id, scene_id, file_path=file_path, stage=stage, note=str(payload.get("note", "")))
+    except (FileNotFoundError, KeyError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/scenes/{scene_id}/comments")
+def review_comment(project_id: str, scene_id: int, payload: dict = Body(...)):
+    text = str(payload.get("text", "")).strip()
+    if not text:
+        raise HTTPException(400, "text requerido")
+    try:
+        return add_review_comment(project_id, scene_id, text=text, timestamp=payload.get("timestamp"))
+    except (FileNotFoundError, KeyError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/scenes/{scene_id}/versions/{version_id}/approve")
+def approve_scene_version(project_id: str, scene_id: int, version_id: int):
+    try:
+        return approve_version(project_id, scene_id, version_id)
+    except (FileNotFoundError, KeyError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/projects/{project_id}/review")
+def project_review(project_id: str):
+    try:
+        return review_summary(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @router.post("/projects/{project_id}/assemble-ai")

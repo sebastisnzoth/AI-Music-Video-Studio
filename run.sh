@@ -14,4 +14,4 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
   exit 1
 fi
 
-python -m app.main
+python -m app.main_v2

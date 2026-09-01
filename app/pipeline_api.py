@@ -7,7 +7,7 @@ from .assembly import assemble_generated_video
 from .batch import generation_queue, prepare_batch
 from .captions import build_lyrics_srt, burn_subtitles
 from .identity import build_identity_profile
-from .local_pipeline import detect_local_tools, run_upscale, run_wav2lip, scene_pipeline_status
+from .local_pipeline import detect_local_tools, run_deep_live_cam, run_upscale, run_wav2lip, scene_pipeline_status
 from .pipeline import PROJECTS
 from .review import add_review_comment, add_scene_version, approve_version, review_summary
 
@@ -33,6 +33,22 @@ def pipeline_status(project_id: str, scene_id: int):
         return scene_pipeline_status(project_id, scene_id)
     except (FileNotFoundError, KeyError) as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/scenes/{scene_id}/face-refine")
+def face_refine(project_id: str, scene_id: int, payload: dict = Body(default={})):
+    try:
+        return run_deep_live_cam(
+            project_id,
+            scene_id,
+            execution_provider=str(payload.get("execution_provider", "") or "") or None,
+            mouth_mask=bool(payload.get("mouth_mask", True)),
+            enhance_face=bool(payload.get("enhance_face", True)),
+        )
+    except (FileNotFoundError, KeyError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 
 @router.post("/projects/{project_id}/scenes/{scene_id}/lipsync")

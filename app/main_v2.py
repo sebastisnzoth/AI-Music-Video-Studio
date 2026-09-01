@@ -6,4 +6,4 @@ from .pipeline_api import router as pipeline_router
 
 app.include_router(pipeline_router)
 app.include_router(integrations_router)
-app.version = "0.10.0"
+app.version = "0.10.1"

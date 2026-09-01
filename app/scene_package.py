@@ -18,6 +18,19 @@ def _find_song(project_dir: Path, meta: dict[str, Any]) -> Path:
     return path
 
 
+def _load_identity(project_dir: Path, meta: dict[str, Any]) -> dict[str, Any] | None:
+    value = meta.get("identity_profile")
+    candidates = [Path(str(value))] if value else []
+    candidates.append(project_dir / "identity.json")
+    for path in candidates:
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+    return None
+
+
 def prepare_scene_package(project_id: str, scene_id: int) -> dict[str, Any]:
     """Create deterministic local inputs for the free AI video pipeline."""
     meta = load_project(project_id)
@@ -40,7 +53,13 @@ def prepare_scene_package(project_id: str, scene_id: int) -> dict[str, Any]:
         "-vn", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", str(audio_out),
     ])
 
+    identity = _load_identity(project_dir, meta)
     toolchain = choose_for_scene(scene)
+    identity_rules = "; ".join((identity or {}).get("identity_rules", []))
+    prompt = scene.get("director_prompt") or scene.get("prompt", "")
+    if identity_rules and toolchain.get("identity_model") != "none":
+        prompt = f"{prompt} Identity lock: {identity_rules}."
+
     package = {
         "project_id": project_id,
         "scene_id": scene_id,
@@ -52,13 +71,14 @@ def prepare_scene_package(project_id: str, scene_id: int) -> dict[str, Any]:
         "needs_lipsync": bool(scene.get("needs_lipsync", False)),
         "energy_band": scene.get("energy_band", scene.get("energy", "medium")),
         "lyrics": scene.get("lyrics", ""),
-        "prompt": scene.get("director_prompt") or scene.get("prompt", ""),
+        "prompt": prompt,
         "negative_prompt": scene.get("negative_prompt", ""),
         "camera": scene.get("camera", ""),
         "palette": scene.get("palette", ""),
         "lighting": scene.get("lighting", ""),
         "audio_path": str(audio_out),
         "reference_path": str(visual) if visual and visual.exists() else None,
+        "identity_profile": identity,
         "output_path": str(scene_dir / "clip.mp4"),
         "toolchain": toolchain,
         "quality_target": meta.get("quality", "final"),

@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .comfyui import DEFAULT_BASE_URL, get_history, load_workflow, output_files, queue_prompt, render_workflow
+from .comfyui import ComfyUIError, DEFAULT_BASE_URL, get_history, load_workflow, output_files, queue_prompt, render_workflow
 from .pipeline import PROJECTS, load_project, save_json
 from .scene_package import prepare_scene_package
 
@@ -119,7 +119,21 @@ def refresh_scene_generation(project_id: str, scene_id: int, base_url: str = DEF
     if not prompt_id:
         return {"project_id": project_id, "scene_id": scene_id, "status": scene.get("status", "planned"), "outputs": []}
 
-    history = get_history(str(prompt_id), base_url=base_url)
+    try:
+        history = get_history(str(prompt_id), base_url=base_url)
+    except ComfyUIError as exc:
+        # En CPU ComfyUI puede tardar en responder mientras genera. Eso no debe
+        # detener el pipeline: se considera un fallo transitorio y se reintenta.
+        return {
+            "project_id": project_id,
+            "scene_id": scene_id,
+            "status": scene.get("status", "generating_image"),
+            "outputs": [],
+            "transient": True,
+            "transient_error": str(exc),
+            "prompt_id": prompt_id,
+        }
+
     if history is None:
         return {"project_id": project_id, "scene_id": scene_id, "status": scene.get("status", "generating_image"), "outputs": []}
 

@@ -8,6 +8,7 @@ from .batch import generation_queue, prepare_batch
 from .captions import build_lyrics_srt, burn_subtitles
 from .identity import build_identity_profile
 from .local_pipeline import detect_local_tools, run_deep_live_cam, run_upscale, run_wav2lip, scene_pipeline_status
+from .orchestrator import advance_scene_pipeline, auto_pipeline_status
 from .pipeline import PROJECTS
 from .review import add_review_comment, add_scene_version, approve_version, review_summary
 
@@ -31,6 +32,36 @@ def create_identity(project_id: str, payload: dict = Body(default={})):
 def pipeline_status(project_id: str, scene_id: int):
     try:
         return scene_pipeline_status(project_id, scene_id)
+    except (FileNotFoundError, KeyError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/scenes/{scene_id}/auto-pipeline")
+def auto_pipeline(project_id: str, scene_id: int, payload: dict = Body(default={})):
+    try:
+        return advance_scene_pipeline(
+            project_id,
+            scene_id,
+            fps=int(payload.get("fps", 24)),
+            use_face_refine=bool(payload.get("use_face_refine", True)),
+            mouth_mask=bool(payload.get("mouth_mask", True)),
+            enhance_face=bool(payload.get("enhance_face", True)),
+            execution_provider=str(payload.get("execution_provider", "") or "") or None,
+            use_lipsync=bool(payload.get("use_lipsync", True)),
+            use_upscale=bool(payload.get("use_upscale", True)),
+            upscale_scale=int(payload.get("upscale_scale", 2)),
+            strict_optional=bool(payload.get("strict_optional", False)),
+        )
+    except (FileNotFoundError, KeyError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@router.get("/projects/{project_id}/scenes/{scene_id}/auto-pipeline/status")
+def auto_pipeline_get_status(project_id: str, scene_id: int):
+    try:
+        return auto_pipeline_status(project_id, scene_id)
     except (FileNotFoundError, KeyError) as exc:
         raise HTTPException(404, str(exc)) from exc
 

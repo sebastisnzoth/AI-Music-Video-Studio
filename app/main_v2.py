@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import main as main_module
 from .integrations_api import router as integrations_router
-from .local_inputs_api import router as local_inputs_router
 from .pipeline_api import router as pipeline_router
+from .project_create_api import router as project_create_router
 from .ui_extensions import enhance_page
 
 app = main_module.app
@@ -32,7 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(project_create_router)
 app.include_router(pipeline_router)
 app.include_router(integrations_router)
-app.include_router(local_inputs_router)
-app.version = "0.13.0"
+app.version = "0.13.1"

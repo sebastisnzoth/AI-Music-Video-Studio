@@ -8,21 +8,76 @@ PORT="${PORT:-8080}"
 COMFYUI_URL="${COMFYUI_URL:-http://127.0.0.1:8188}"
 VERCEL_ORIGIN="${VERCEL_ORIGIN:-https://ai-music-video-studio-three.vercel.app}"
 LOG_DIR="$ROOT/.logs"
-mkdir -p "$LOG_DIR"
+TOOLS_BIN="$ROOT/.tools/bin"
+TOOLS_TMP="$ROOT/.tools/tmp"
+mkdir -p "$LOG_DIR" "$TOOLS_BIN" "$TOOLS_TMP"
+export PATH="$TOOLS_BIN:$PATH"
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "ERROR: python3 no está instalado."
   exit 1
 fi
-if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "ERROR: FFmpeg no está instalado. En macOS: brew install ffmpeg"
-  exit 1
+
+install_ffmpeg_macos_intel() {
+  echo "FFmpeg/ffprobe no encontrados. Instalando binarios locales para macOS Intel..."
+  rm -f "$TOOLS_TMP"/ffmpeg*.zip "$TOOLS_TMP"/ffprobe*.zip
+  curl -fLJ "https://evermeet.cx/ffmpeg/getrelease/zip" -o "$TOOLS_TMP/ffmpeg.zip"
+  curl -fLJ "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" -o "$TOOLS_TMP/ffprobe.zip"
+  unzip -qo "$TOOLS_TMP/ffmpeg.zip" -d "$TOOLS_TMP/ffmpeg-unpack"
+  unzip -qo "$TOOLS_TMP/ffprobe.zip" -d "$TOOLS_TMP/ffprobe-unpack"
+  FFMPEG_SRC="$(find "$TOOLS_TMP/ffmpeg-unpack" -type f -name ffmpeg -perm -111 | head -n 1 || true)"
+  FFPROBE_SRC="$(find "$TOOLS_TMP/ffprobe-unpack" -type f -name ffprobe -perm -111 | head -n 1 || true)"
+  if [ -z "$FFMPEG_SRC" ] || [ -z "$FFPROBE_SRC" ]; then
+    echo "ERROR: no pude extraer ffmpeg/ffprobe."
+    exit 1
+  fi
+  cp "$FFMPEG_SRC" "$TOOLS_BIN/ffmpeg"
+  cp "$FFPROBE_SRC" "$TOOLS_BIN/ffprobe"
+  chmod +x "$TOOLS_BIN/ffmpeg" "$TOOLS_BIN/ffprobe"
+  xattr -dr com.apple.quarantine "$TOOLS_BIN/ffmpeg" "$TOOLS_BIN/ffprobe" 2>/dev/null || true
+}
+
+install_cloudflared_macos_intel() {
+  echo "cloudflared no encontrado. Instalando binario local para macOS Intel..."
+  rm -rf "$TOOLS_TMP/cloudflared-unpack" "$TOOLS_TMP/cloudflared.tgz"
+  mkdir -p "$TOOLS_TMP/cloudflared-unpack"
+  curl -fL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz" -o "$TOOLS_TMP/cloudflared.tgz"
+  tar -xzf "$TOOLS_TMP/cloudflared.tgz" -C "$TOOLS_TMP/cloudflared-unpack"
+  CLOUDFLARED_SRC="$(find "$TOOLS_TMP/cloudflared-unpack" -type f -name cloudflared | head -n 1 || true)"
+  if [ -z "$CLOUDFLARED_SRC" ]; then
+    echo "ERROR: no pude extraer cloudflared."
+    exit 1
+  fi
+  cp "$CLOUDFLARED_SRC" "$TOOLS_BIN/cloudflared"
+  chmod +x "$TOOLS_BIN/cloudflared"
+  xattr -dr com.apple.quarantine "$TOOLS_BIN/cloudflared" 2>/dev/null || true
+}
+
+OS_NAME="$(uname -s)"
+ARCH_NAME="$(uname -m)"
+
+if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+  if [ "$OS_NAME" = "Darwin" ] && [ "$ARCH_NAME" = "x86_64" ]; then
+    install_ffmpeg_macos_intel
+  else
+    echo "ERROR: FFmpeg no está instalado. Instalalo y volvé a ejecutar este script."
+    exit 1
+  fi
 fi
+
 if ! command -v cloudflared >/dev/null 2>&1; then
-  echo "ERROR: cloudflared no está instalado."
-  echo "Instalalo con: brew install cloudflared"
-  exit 1
+  if [ "$OS_NAME" = "Darwin" ] && [ "$ARCH_NAME" = "x86_64" ]; then
+    install_cloudflared_macos_intel
+  else
+    echo "ERROR: cloudflared no está instalado. Instalalo y volvé a ejecutar este script."
+    exit 1
+  fi
 fi
+
+echo "✓ FFmpeg: $(ffmpeg -version 2>/dev/null | head -n 1)"
+echo "✓ FFprobe: $(ffprobe -version 2>/dev/null | head -n 1)"
+echo "✓ Cloudflared: $(cloudflared --version 2>/dev/null | head -n 1)"
+echo "✓ Python: $(python3 --version 2>&1)"
 
 if [ ! -d ".venv" ]; then
   echo "Creando entorno Python..."

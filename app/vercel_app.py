@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
 import urllib.request
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
-app = FastAPI(title="AI Music Video Studio Control", version="0.13.2")
+app = FastAPI(title="AI Music Video Studio Control", version="0.13.4")
 
 
 def _worker_url() -> str:
@@ -21,7 +20,7 @@ def _worker_json(path: str, timeout: float = 5.0) -> dict:
         raise RuntimeError("RENDER_WORKER_URL no configurado")
     req = urllib.request.Request(
         f"{base}/{path.lstrip('/')}",
-        headers={"User-Agent": "AI-Music-Video-Studio-Vercel/0.13.2"},
+        headers={"User-Agent": "AI-Music-Video-Studio-Vercel/0.13.4"},
     )
     with urllib.request.urlopen(req, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
@@ -49,51 +48,467 @@ def control_health():
 @app.get("/api/control/checkpoints")
 def control_checkpoints():
     if not _worker_url():
-        return JSONResponse({"worker_configured": False, "online": False, "checkpoints": [], "count": 0, "error": "Worker no configurado"})
+        return JSONResponse(
+            {
+                "worker_configured": False,
+                "online": False,
+                "checkpoints": [],
+                "count": 0,
+                "error": "Worker no configurado",
+            }
+        )
     try:
         payload = _worker_json("/api/comfyui/checkpoints", timeout=6.0)
         return JSONResponse({"worker_configured": True, **payload})
     except Exception as exc:
-        return JSONResponse({"worker_configured": True, "online": False, "checkpoints": [], "count": 0, "error": str(exc)})
+        return JSONResponse(
+            {
+                "worker_configured": True,
+                "online": False,
+                "checkpoints": [],
+                "count": 0,
+                "error": str(exc),
+            }
+        )
 
 
 @app.get("/api/control/config")
 def control_config():
     base = _worker_url()
-    return JSONResponse({"worker_configured": bool(base), "worker_url": base or None, "version": app.version})
+    return JSONResponse(
+        {"worker_configured": bool(base), "worker_url": base or None, "version": app.version}
+    )
 
 
 PAGE = r'''<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Music Video Studio</title>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Music Video Studio</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#080a10;color:#f7f7fb;font-family:Inter,system-ui,-apple-system,sans-serif}.shell{max-width:1240px;margin:auto;padding:34px 20px 70px}.hero{padding:10px 0 24px}.eyebrow{font-size:12px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;color:#8e97b4}h1{font-size:clamp(40px,6vw,74px);line-height:.98;letter-spacing:-.055em;margin:8px 0 14px}.hero p{max-width:820px;color:#aeb5c9;font-size:17px;line-height:1.55}.badge{display:inline-block;border:1px solid #30364a;background:#111522;border-radius:999px;padding:7px 10px;margin:5px 6px 0 0;font-size:12px;color:#d2d5ed}.layout{display:grid;grid-template-columns:.9fr 1.1fr;gap:22px}.card{background:linear-gradient(180deg,#121620,#0d1018);border:1px solid #242a39;border-radius:22px;padding:21px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.full{grid-column:1/-1}label{display:block;font-size:12px;font-weight:850;color:#dce0ed;margin:0 0 6px}input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid #343a4d;background:#090c13;color:white;font:inherit}textarea{min-height:100px;resize:vertical}button{border:0;border-radius:12px;padding:11px 13px;background:#282e42;color:white;font-weight:800;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.primary{width:100%;padding:14px;background:linear-gradient(135deg,#7258ff,#d84fc7)}.auto{background:linear-gradient(135deg,#6f58ff,#b449d2)}.ok{background:#174c3b}.muted{font-size:12px;color:#8991a7;line-height:1.5}.status{margin-top:12px;background:#090c13;border:1px solid #272d3d;border-radius:12px;padding:12px;white-space:pre-wrap;color:#cad0e1;min-height:58px}.storyboard{display:grid;gap:10px;max-height:760px;overflow:auto}.scene{border:1px solid #292f40;border-radius:14px;padding:13px;background:#0a0d14}.scene .top{display:flex;justify-content:space-between;gap:10px}.scene b{font-size:12px}.scene p{font-size:12px;line-height:1.45;color:#929aaf;margin:9px 0}.scene button{font-size:11px;padding:7px 9px;margin:3px 5px 0 0}.meta{font-size:11px;color:#a38fff}.notice{border:1px solid #32384a;background:#101521;border-radius:14px;padding:14px;color:#b7bed2;margin:12px 0 18px;font-size:13px}.connect{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}.modelhint{margin:6px 0 0;color:#8991a7;font-size:11px}.inline{display:flex;gap:8px;align-items:center}.inline select{flex:1}.progressbox,.workflow{margin-top:14px;border:1px solid #30364a;background:#0a0d14;border-radius:14px;padding:13px}.progresshead{display:flex;justify-content:space-between;gap:10px;font-size:12px}.progressstage{font-weight:850}.progressmeta{color:#9fa6ba}.track{height:11px;border-radius:999px;background:#1c2130;margin-top:10px;overflow:hidden}.fill{height:100%;width:0;background:linear-gradient(90deg,#7258ff,#d84fc7);transition:width .35s}.progressdetail,.workflowstate{font-size:11px;color:#929aaf;margin-top:8px}.workflowsteps{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px}.step{font-size:11px;padding:6px 9px;border:1px solid #30364a;border-radius:999px;color:#8f98af;background:#111522}.step.active{color:white;border-color:#7258ff}.step.done{color:#9fe0c6;border-color:#245c49}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.actions button{width:100%}.final{grid-column:1/-1;background:linear-gradient(135deg,#16835f,#29a87d)}.preview video{width:100%;margin-top:14px;border-radius:14px;background:#000}a{color:#bc9cff}@media(max-width:900px){.layout,.grid,.actions{grid-template-columns:1fr}.full,.final{grid-column:auto}.connect{grid-template-columns:1fr}.inline{flex-direction:column;align-items:stretch}}
-</style></head><body><main class="shell">
-<section class="hero"><div class="eyebrow">Vercel control plane · render worker externo</div><h1>AI Music Video Studio</h1><p>Subí una canción y una foto/video. La conexión con tu worker se configura automáticamente.</p><span class="badge">Vercel</span><span class="badge">ComfyUI</span><span class="badge">Auto Pipeline</span><span class="badge" id="workerBadge">Worker: verificando…</span></section>
-<div class="notice"><b>Render worker automático</b><br>La app usa automáticamente el worker configurado en Vercel. No hace falta pegar la URL cada vez.<div class="connect"><input id="workerUrl" readonly><button id="connectBtn" type="button">Reintentar conexión</button></div><div id="connectionHint" class="modelhint">Verificando worker…</div></div>
-<div class="layout"><section class="card"><h2>Nuevo videoclip</h2><form id="form" class="grid">
-<div><label>Canción</label><input type="file" name="song" accept="audio/*" required></div><div><label>Foto o video</label><input type="file" name="visual" accept="image/*,video/*" required></div><div><label>Título</label><input name="title" placeholder="Mi videoclip"></div><div><label>Estilo</label><select name="style"><option value="cinematic rock">Cinematic Rock</option><option value="romantic film">Romántico</option><option value="urban night">Urbano nocturno</option><option value="live performance">Performance</option><option value="dreamlike surreal">Surreal / Dream</option></select></div><div><label>Formato</label><select name="aspect"><option>16:9</option><option>9:16</option></select></div><div><label>Calidad</label><select name="quality"><option value="preview" selected>Preview</option><option value="final">Final 1080p</option><option value="master">Master</option></select></div><div class="full"><label>Letra (opcional)</label><textarea name="lyrics" placeholder="Pegá la letra..."></textarea></div><div class="full"><label>Modelo / Checkpoint ComfyUI</label><div class="inline"><select id="checkpoint" disabled><option>Verificando modelos…</option></select><button id="refreshModels" type="button">Actualizar modelos</button></div><p id="modelHint" class="modelhint"></p></div><div class="full"><button id="createBtn" class="primary" disabled>Crear proyecto en worker</button></div></form>
-<div class="progressbox"><div class="progresshead"><span id="progressStage" class="progressstage">En espera</span><span id="progressMeta" class="progressmeta">0% · 00:00</span></div><div class="track"><div id="progressFill" class="fill"></div></div><div id="progressDetail" class="progressdetail">El progreso aparecerá aquí.</div></div><div id="status" class="status">Verificando worker automáticamente…</div><div id="preview" class="preview"></div></section>
-<section class="card"><h2>Storyboard</h2><div id="storyboard" class="storyboard"><p class="muted">Creá un proyecto para ver las escenas.</p></div><div class="workflow"><h3>Flujo de producción</h3><div class="workflowsteps"><span id="step1" class="step active">1 · Storyboard</span><span id="step2" class="step">2 · Generar escenas</span><span id="step3" class="step">3 · Revisar / aprobar</span><span id="step4" class="step">4 · Videoclip final</span></div><div class="actions"><button id="approveStoryboardBtn" disabled>✅ Aprobar storyboard</button><button id="generateAllBtn" class="auto" disabled>🎬 Generar todas las escenas</button><button id="finalBtn" class="final" disabled>🎞 Generar videoclip final</button></div><div id="workflowState" class="workflowstate">Creá un proyecto para comenzar.</div></div></section></div></main>
+*{box-sizing:border-box}
+body{margin:0;background:#080a10;color:#f7f7fb;font-family:Inter,system-ui,-apple-system,sans-serif}
+.shell{max-width:1260px;margin:auto;padding:34px 20px 70px}
+.hero{padding:10px 0 24px}.eyebrow{font-size:12px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;color:#8e97b4}
+h1{font-size:clamp(40px,6vw,74px);line-height:.98;letter-spacing:-.055em;margin:8px 0 14px}
+.hero p{max-width:820px;color:#aeb5c9;font-size:17px;line-height:1.55}
+.badge{display:inline-block;border:1px solid #30364a;background:#111522;border-radius:999px;padding:7px 10px;margin:5px 6px 0 0;font-size:12px;color:#d2d5ed}
+.layout{display:grid;grid-template-columns:.9fr 1.1fr;gap:22px}
+.card{background:linear-gradient(180deg,#121620,#0d1018);border:1px solid #242a39;border-radius:22px;padding:21px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.full{grid-column:1/-1}
+label{display:block;font-size:12px;font-weight:850;color:#dce0ed;margin:0 0 6px}
+input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid #343a4d;background:#090c13;color:white;font:inherit}
+textarea{min-height:100px;resize:vertical}
+button{border:0;border-radius:12px;padding:11px 13px;background:#282e42;color:white;font-weight:800;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}
+.primary{width:100%;padding:14px;background:linear-gradient(135deg,#7258ff,#d84fc7)}
+.auto{background:linear-gradient(135deg,#6f58ff,#b449d2)}
+.ok{background:#174c3b}.secondary{background:#1d2230}
+.muted{font-size:12px;color:#8991a7;line-height:1.5}
+.status{margin-top:12px;background:#090c13;border:1px solid #272d3d;border-radius:12px;padding:12px;white-space:pre-wrap;color:#cad0e1;min-height:58px}
+.notice{border:1px solid #32384a;background:#101521;border-radius:14px;padding:14px;color:#b7bed2;margin:12px 0 18px;font-size:13px}
+.connect{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}
+.modelhint{margin:6px 0 0;color:#8991a7;font-size:11px}.inline{display:flex;gap:8px;align-items:center}.inline select{flex:1}
+.progressbox,.workflow,.activeScene{margin-top:14px;border:1px solid #30364a;background:#0a0d14;border-radius:14px;padding:13px}
+.progresshead{display:flex;justify-content:space-between;gap:10px;font-size:12px}.progressstage{font-weight:850}.progressmeta{color:#9fa6ba}
+.track{height:11px;border-radius:999px;background:#1c2130;margin-top:10px;overflow:hidden}.fill{height:100%;width:0;background:linear-gradient(90deg,#7258ff,#d84fc7);transition:width .35s}
+.progressdetail,.workflowstate{font-size:11px;color:#929aaf;margin-top:8px}
+.storyboard{display:grid;gap:10px;max-height:610px;overflow:auto}
+.scene{border:1px solid #292f40;border-radius:14px;padding:13px;background:#0a0d14;cursor:pointer;transition:.18s}
+.scene:hover{border-color:#4a5370}.scene.active{border-color:#806bff;box-shadow:0 0 0 1px #806bff inset;background:#101421}
+.scene .top{display:flex;justify-content:space-between;gap:10px}.scene b{font-size:12px}.scene p{font-size:12px;line-height:1.45;color:#929aaf;margin:9px 0}
+.meta{font-size:11px;color:#a38fff}.approved{color:#9fe0c6}.pending{color:#e6c37a}
+.activeScene h3{margin:0 0 8px}.activeScene .sceneText{font-size:12px;color:#abb2c6;line-height:1.55;white-space:pre-wrap}
+.sceneActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.sceneActions button{width:100%}
+.navActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.workflowsteps{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px}.step{font-size:11px;padding:6px 9px;border:1px solid #30364a;border-radius:999px;color:#8f98af;background:#111522}
+.step.active{color:white;border-color:#7258ff}.step.done{color:#9fe0c6;border-color:#245c49}
+.actions{display:grid;grid-template-columns:1fr;gap:8px}.actions button{width:100%}
+.final{background:linear-gradient(135deg,#16835f,#29a87d)}
+.advanced{margin-top:10px;padding-top:10px;border-top:1px solid #272d3d}
+.preview video{width:100%;margin-top:14px;border-radius:14px;background:#000}a{color:#bc9cff}
+.counter{font-size:11px;color:#9ca5bc;margin-top:5px}
+@media(max-width:900px){.layout,.grid,.sceneActions,.navActions{grid-template-columns:1fr}.full{grid-column:auto}.connect{grid-template-columns:1fr}.inline{flex-direction:column;align-items:stretch}}
+</style>
+</head>
+<body>
+<main class="shell">
+<section class="hero">
+<div class="eyebrow">Vercel control plane · render worker externo</div>
+<h1>AI Music Video Studio</h1>
+<p>Subí una canción y una foto/video. Generá y aprobá cada escena por separado, sin reiniciar ComfyUI ni el worker.</p>
+<span class="badge">Vercel</span><span class="badge">ComfyUI</span><span class="badge">Escena por escena</span><span class="badge" id="workerBadge">Worker: verificando…</span>
+</section>
+
+<div class="notice">
+<b>Render worker automático</b><br>
+La app usa automáticamente el worker configurado en Vercel.
+<div class="connect"><input id="workerUrl" readonly><button id="connectBtn" type="button">Reintentar conexión</button></div>
+<div id="connectionHint" class="modelhint">Verificando worker…</div>
+</div>
+
+<div class="layout">
+<section class="card">
+<h2>Nuevo videoclip</h2>
+<form id="form" class="grid">
+<div><label>Canción</label><input type="file" name="song" accept="audio/*" required></div>
+<div><label>Foto o video</label><input type="file" name="visual" accept="image/*,video/*" required></div>
+<div><label>Título</label><input name="title" placeholder="Mi videoclip"></div>
+<div><label>Estilo</label><select name="style"><option value="cinematic rock">Cinematic Rock</option><option value="romantic film">Romántico</option><option value="urban night">Urbano nocturno</option><option value="live performance">Performance</option><option value="dreamlike surreal">Surreal / Dream</option></select></div>
+<div><label>Formato</label><select name="aspect"><option>16:9</option><option>9:16</option></select></div>
+<div><label>Calidad</label><select name="quality"><option value="preview" selected>Preview</option><option value="final">Final 1080p</option><option value="master">Master</option></select></div>
+<div class="full"><label>Letra (opcional)</label><textarea name="lyrics" placeholder="Pegá la letra..."></textarea></div>
+<div class="full"><label>Modelo / Checkpoint ComfyUI</label><div class="inline"><select id="checkpoint" disabled><option>Verificando modelos…</option></select><button id="refreshModels" type="button">Actualizar modelos</button></div><p id="modelHint" class="modelhint"></p></div>
+<div class="full"><button id="createBtn" class="primary" disabled>Crear storyboard</button></div>
+</form>
+
+<div class="progressbox">
+<div class="progresshead"><span id="progressStage" class="progressstage">En espera</span><span id="progressMeta" class="progressmeta">0% · 00:00</span></div>
+<div class="track"><div id="progressFill" class="fill"></div></div>
+<div id="progressDetail" class="progressdetail">El progreso aparecerá aquí.</div>
+</div>
+<div id="status" class="status">Verificando worker automáticamente…</div>
+<div id="preview" class="preview"></div>
+</section>
+
+<section class="card">
+<h2>Storyboard</h2>
+<div id="storyboard" class="storyboard"><p class="muted">Creá un proyecto para ver las escenas.</p></div>
+
+<div id="activeScenePanel" class="activeScene">
+<h3>Escena activa</h3>
+<div id="activeSceneBody" class="sceneText">Todavía no hay una escena seleccionada.</div>
+<div class="sceneActions">
+<button id="generateSceneBtn" class="auto" disabled>🎬 Generar esta escena</button>
+<button id="approveSceneBtn" class="ok" disabled>✅ Aprobar escena</button>
+<button id="regenerateSceneBtn" class="secondary" disabled>🔄 Volver a generar</button>
+<button id="nextSceneBtn" class="secondary" disabled>⏭ Siguiente escena</button>
+</div>
+<div class="navActions">
+<button id="prevSceneBtn" class="secondary" disabled>⬅ Escena anterior</button>
+<button id="selectFirstPendingBtn" class="secondary" disabled>🎯 Ir a la próxima pendiente</button>
+</div>
+<div id="sceneCounter" class="counter"></div>
+</div>
+
+<div class="workflow">
+<h3>Flujo de producción</h3>
+<div class="workflowsteps">
+<span id="step1" class="step active">1 · Storyboard</span>
+<span id="step2" class="step">2 · Escena activa</span>
+<span id="step3" class="step">3 · Aprobar</span>
+<span id="step4" class="step">4 · Videoclip final</span>
+</div>
+<div class="actions">
+<button id="approveStoryboardBtn" disabled>✅ Aprobar storyboard</button>
+<button id="finalBtn" class="final" disabled>🎞 Generar videoclip final</button>
+</div>
+<div class="advanced">
+<button id="generateAllBtn" class="secondary" disabled>⚙ Generar todas (opcional)</button>
+</div>
+<div id="workflowState" class="workflowstate">Creá un proyecto para comenzar.</div>
+</div>
+</section>
+</div>
+</main>
+
 <script>
 const SERVER_WORKER=__SERVER_WORKER__;
-const $=s=>document.querySelector(s),f=$('#form'),statusEl=$('#status'),sb=$('#storyboard'),pv=$('#preview'),cp=$('#checkpoint'),badge=$('#workerBadge'),workerInput=$('#workerUrl'),connectBtn=$('#connectBtn'),createBtn=$('#createBtn'),refreshModels=$('#refreshModels'),connectionHint=$('#connectionHint'),modelHint=$('#modelHint'),progressStage=$('#progressStage'),progressMeta=$('#progressMeta'),progressFill=$('#progressFill'),progressDetail=$('#progressDetail'),approveStoryboardBtn=$('#approveStoryboardBtn'),generateAllBtn=$('#generateAllBtn'),finalBtn=$('#finalBtn'),workflowState=$('#workflowState');
-const steps=[1,2,3,4].map(i=>$('#step'+i));let WORKER='',current=null,currentRows=[],storyboardApproved=false,generatingAll=false,progressStarted=0,progressTimer=null,currentPct=0;const running=new Set();
-function esc(x){const d=document.createElement('div');d.textContent=String(x??'');return d.innerHTML}function w(p){return WORKER+p}function elapsed(){if(!progressStarted)return'00:00';const x=Math.floor((Date.now()-progressStarted)/1000);return String(Math.floor(x/60)).padStart(2,'0')+':'+String(x%60).padStart(2,'0')}function renderProgress(){progressFill.style.width=Math.max(0,Math.min(100,currentPct))+'%';progressMeta.textContent=Math.round(currentPct)+'% · '+elapsed()}function beginProgress(stage,detail='',pct=0){progressStarted=Date.now();currentPct=pct;progressStage.textContent=stage;progressDetail.textContent=detail;clearInterval(progressTimer);progressTimer=setInterval(renderProgress,500);renderProgress()}function setProgress(pct,stage,detail=''){currentPct=Math.max(currentPct,Math.min(100,pct));if(stage)progressStage.textContent=stage;if(detail)progressDetail.textContent=detail;renderProgress()}function endProgress(stage,detail=''){currentPct=100;progressStage.textContent=stage;progressDetail.textContent=detail;renderProgress();clearInterval(progressTimer)}function failProgress(detail){progressStage.textContent='Error';progressDetail.textContent=detail;clearInterval(progressTimer)}
-function setWorkflowStep(active){steps.forEach((el,i)=>{const n=i+1;el.classList.toggle('done',n<active);el.classList.toggle('active',n===active)})}function updateWorkflow(){approveStoryboardBtn.disabled=!current||storyboardApproved||generatingAll;generateAllBtn.disabled=!current||!storyboardApproved||generatingAll||!cp.value;const ready=currentRows.length>0&&currentRows.every(x=>x.status==='ready_for_review'||x.auto_pipeline_state==='ready_for_review'),approved=currentRows.length>0&&currentRows.every(x=>!!x.approved);finalBtn.disabled=!approved||generatingAll;if(!current){setWorkflowStep(1);workflowState.textContent='Creá un proyecto para comenzar.'}else if(!storyboardApproved){setWorkflowStep(1);workflowState.textContent='Revisá y aprobá el storyboard.'}else if(!ready){setWorkflowStep(2);workflowState.textContent='Storyboard aprobado. Generá las escenas.'}else if(!approved){setWorkflowStep(3);workflowState.textContent='Revisá y aprobá cada escena.'}else{setWorkflowStep(4);workflowState.textContent='Todo aprobado. Generá el videoclip final.'}}
-async function loadCheckpoints(){cp.disabled=true;cp.innerHTML='<option>Verificando modelos…</option>';try{const r=await fetch('/api/control/checkpoints',{cache:'no-store'}),j=await r.json();if(!j.online)throw Error(j.error||'ComfyUI offline');const models=Array.isArray(j.checkpoints)?j.checkpoints:[];if(!models.length)throw Error('No hay checkpoints detectados');cp.innerHTML='<option value="">Elegí un modelo…</option>'+models.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');cp.disabled=false;if(models.length===1)cp.value=models[0];modelHint.textContent=`${models.length} modelo${models.length===1?'':'s'} detectado${models.length===1?'':'s'} en ComfyUI.`;updateWorkflow()}catch(err){cp.innerHTML='<option value="">Sin modelos</option>';modelHint.textContent=err.message}}
-async function autoConnect(){localStorage.removeItem('renderWorkerUrl');badge.textContent='Worker: verificando…';connectBtn.disabled=true;createBtn.disabled=true;try{const r=await fetch('/api/control/health?ts='+Date.now(),{cache:'no-store'}),j=await r.json();if(!r.ok||!j.online||!j.worker_url)throw Error(j.error||'Worker offline');WORKER=j.worker_url;workerInput.value=WORKER;badge.textContent='Worker: online';connectionHint.textContent='Conectado automáticamente a '+WORKER;statusEl.textContent=`Worker online · versión ${j.worker?.version||'n/d'}\nComfyUI: ${j.worker?.comfyui?'online':'offline'}`;createBtn.disabled=false;await loadCheckpoints();return true}catch(err){WORKER='';workerInput.value=SERVER_WORKER||'';badge.textContent='Worker: offline';connectionHint.textContent='No se pudo conectar automáticamente: '+err.message;statusEl.textContent='Worker offline. Verificá que la Terminal del worker siga abierta.';return false}finally{connectBtn.disabled=false}}
-connectBtn.addEventListener('click',autoConnect);refreshModels.addEventListener('click',loadCheckpoints);cp.addEventListener('change',updateWorkflow);
-function createProject(){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('POST',w('/api/projects/storyboard'));xhr.timeout=120000;xhr.upload.onprogress=e=>{if(e.lengthComputable)setProgress(Math.min(65,(e.loaded/e.total)*65),'Subiendo archivos',`${Math.round(e.loaded/1048576)} MB de ${Math.round(e.total/1048576)} MB`)};xhr.upload.onload=()=>setProgress(72,'Analizando canción','Creando storyboard…');xhr.onload=()=>{let j={};try{j=JSON.parse(xhr.responseText||'{}')}catch{};xhr.status>=200&&xhr.status<300?resolve(j):reject(Error(j.detail||'Error del worker'))};xhr.onerror=()=>reject(Error('Se perdió la conexión durante la subida'));xhr.ontimeout=()=>reject(Error('El worker tardó demasiado'));xhr.send(new FormData(f))})}
-f.addEventListener('submit',async e=>{e.preventDefault();if(!WORKER){await autoConnect();if(!WORKER)return}beginProgress('Preparando subida','Enviando canción y referencia…',1);createBtn.disabled=true;storyboardApproved=false;try{const j=await createProject();current=j.id;currentRows=j.storyboard||[];endProgress('Storyboard listo',`${currentRows.length} escenas creadas`);statusEl.textContent=`Proyecto ${j.id}\nBPM: ${j.analysis?.bpm??'n/d'}\nDuración: ${Number(j.duration||0).toFixed(1)}s\nEscenas: ${currentRows.length}`;draw(currentRows);pv.innerHTML='<p class="muted">Storyboard creado. Ahora aprobalo para generar las escenas.</p>'}catch(err){failProgress(err.message);statusEl.textContent='Error: '+err.message}finally{createBtn.disabled=!WORKER}});
-function draw(rows){currentRows=rows||[];sb.innerHTML=currentRows.map(x=>{const ready=x.status==='ready_for_review'||x.auto_pipeline_state==='ready_for_review';return `<div class="scene"><div class="top"><b>ESCENA ${x.id} · ${x.start}s–${x.end}s</b><span class="meta">${x.status||'planned'}</span></div><p>${esc(x.lyrics||x.director_prompt||x.prompt)}</p><button class="auto" onclick="autoPipeline(${x.id})">✨ Generar / regenerar</button><button class="${x.approved?'ok':''}" onclick="approve(${x.id},${!x.approved})" ${ready?'':'disabled'}>${x.approved?'Aprobada ✓':'Aprobar escena'}</button></div>`}).join('');updateWorkflow()}
-async function reload(){const p=await fetch(w(`/api/projects/${current}`),{cache:'no-store'}).then(r=>r.json());draw(p.storyboard||[]);return p}function pipelineProgress(j){const last=(j.log||[]).slice(-1)[0]||{},stage=last.stage||'',state=j.auto_state||j.status||'';if(state==='ready_for_review')return[100,'Lista para revisar'];if(state==='failed'||state==='blocked')return[100,'Pipeline detenido'];if(stage==='upscale')return[90,'Upscale'];if(stage==='lipsync')return[78,'Lip-sync'];if(stage==='face_refine')return[65,'Refinando identidad'];if(state==='waiting_video'||stage==='video')return[50,'Generando video'];if(state==='waiting_image'||stage==='image')return[25,'Generando imagen'];if(stage==='prepare')return[10,'Preparando escena'];return[5,'Iniciando escena']}
-async function runScenePipeline(id,onUpdate){for(let i=0;i<900;i++){const r=await fetch(w(`/api/projects/${current}/scenes/${id}/auto-pipeline`),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({checkpoint:cp.value,fps:24,use_face_refine:true,mouth_mask:true,enhance_face:true,use_lipsync:true,use_upscale:true,upscale_scale:2,strict_optional:false})}),j=await r.json();if(!r.ok)throw Error(j.detail||JSON.stringify(j));const last=(j.log||[]).slice(-1)[0],[pct,stage]=pipelineProgress(j);onUpdate&&onUpdate(pct,stage,last,j);await reload();if(j.auto_state==='ready_for_review')return j;if(['blocked','failed'].includes(j.auto_state))throw Error(j.last_error||j.auto_state);await new Promise(r=>setTimeout(r,2500))}throw Error('Seguimiento agotado')}
-async function autoPipeline(id){if(running.has(id)||generatingAll)return;running.add(id);beginProgress(`Escena ${id}`,'Iniciando…',2);try{const j=await runScenePipeline(id,(pct,stage,last)=>setProgress(pct,stage,last?.detail||last?.status||''));endProgress('Escena lista',`Versión ${j.review_version||'-'}`)}catch(err){failProgress(err.message);statusEl.textContent='Auto Pipeline: '+err.message}finally{running.delete(id)}}
-approveStoryboardBtn.addEventListener('click',()=>{storyboardApproved=true;statusEl.textContent=`Storyboard aprobado ✓\n${currentRows.length} escenas listas para generar.`;updateWorkflow()});generateAllBtn.addEventListener('click',generateAllScenes);async function generateAllScenes(){if(!storyboardApproved||generatingAll)return;generatingAll=true;updateWorkflow();beginProgress('Generando todas las escenas','',1);try{for(let i=0;i<currentRows.length;i++){const scene=currentRows[i];if(scene.status==='ready_for_review'||scene.auto_pipeline_state==='ready_for_review')continue;await runScenePipeline(scene.id,(pct,stage,last)=>setProgress(((i+pct/100)/currentRows.length)*100,`Escena ${i+1}/${currentRows.length} · ${stage}`,last?.detail||''))}await reload();endProgress('Todas las escenas generadas','Listas para revisar');statusEl.textContent='Todas las escenas fueron generadas ✓'}catch(err){failProgress(err.message);statusEl.textContent='Generación detenida: '+err.message}finally{generatingAll=false;updateWorkflow()}}
-async function approve(id,value){const r=await fetch(w(`/api/projects/${current}/scenes/${id}`),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({approved:value})}),j=await r.json();if(!r.ok){statusEl.textContent='No se pudo aprobar: '+(j.detail||'error');return}await reload();statusEl.textContent=`Escena ${id}: ${value?'aprobada ✓':'aprobación retirada'}`}
-finalBtn.addEventListener('click',generateFinalVideo);async function generateFinalVideo(){if(!currentRows.every(x=>!!x.approved))return;beginProgress('Armando videoclip final','Uniendo escenas y canción…',5);try{const r=await fetch(w(`/api/projects/${current}/assemble-ai`),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approved_only:true})}),j=await r.json();if(!r.ok)throw Error(j.detail||JSON.stringify(j));endProgress('Videoclip terminado','Listo para descargar');const download=w(j.download_url||`/api/projects/${current}/download-ai`);pv.innerHTML=`<video controls src="${download}"></video><p><a href="${download}" target="_blank">⬇ Descargar videoclip final MP4</a></p>`;statusEl.textContent='Videoclip final listo ✓'}catch(err){failProgress(err.message);statusEl.textContent='No se pudo generar el videoclip final: '+err.message}}
+const $=s=>document.querySelector(s);
+const f=$('#form'),statusEl=$('#status'),sb=$('#storyboard'),pv=$('#preview'),cp=$('#checkpoint'),
+badge=$('#workerBadge'),workerInput=$('#workerUrl'),connectBtn=$('#connectBtn'),createBtn=$('#createBtn'),
+refreshModels=$('#refreshModels'),connectionHint=$('#connectionHint'),modelHint=$('#modelHint'),
+progressStage=$('#progressStage'),progressMeta=$('#progressMeta'),progressFill=$('#progressFill'),
+progressDetail=$('#progressDetail'),approveStoryboardBtn=$('#approveStoryboardBtn'),generateAllBtn=$('#generateAllBtn'),
+finalBtn=$('#finalBtn'),workflowState=$('#workflowState'),activeSceneBody=$('#activeSceneBody'),
+generateSceneBtn=$('#generateSceneBtn'),approveSceneBtn=$('#approveSceneBtn'),regenerateSceneBtn=$('#regenerateSceneBtn'),
+nextSceneBtn=$('#nextSceneBtn'),prevSceneBtn=$('#prevSceneBtn'),selectFirstPendingBtn=$('#selectFirstPendingBtn'),
+sceneCounter=$('#sceneCounter');
+const steps=[1,2,3,4].map(i=>$('#step'+i));
+
+let WORKER='',current=null,currentRows=[],storyboardApproved=false,generatingAll=false;
+let activeSceneIndex=0,progressStarted=0,progressTimer=null,currentPct=0;
+const running=new Set();
+
+function esc(x){const d=document.createElement('div');d.textContent=String(x??'');return d.innerHTML}
+function w(p){return WORKER+p}
+function elapsed(){if(!progressStarted)return'00:00';const x=Math.floor((Date.now()-progressStarted)/1000);return String(Math.floor(x/60)).padStart(2,'0')+':'+String(x%60).padStart(2,'0')}
+function renderProgress(){progressFill.style.width=Math.max(0,Math.min(100,currentPct))+'%';progressMeta.textContent=Math.round(currentPct)+'% · '+elapsed()}
+function beginProgress(stage,detail='',pct=0){progressStarted=Date.now();currentPct=pct;progressStage.textContent=stage;progressDetail.textContent=detail;clearInterval(progressTimer);progressTimer=setInterval(renderProgress,500);renderProgress()}
+function setProgress(pct,stage,detail=''){currentPct=Math.max(currentPct,Math.min(100,pct));if(stage)progressStage.textContent=stage;if(detail)progressDetail.textContent=detail;renderProgress()}
+function endProgress(stage,detail=''){currentPct=100;progressStage.textContent=stage;progressDetail.textContent=detail;renderProgress();clearInterval(progressTimer);progressTimer=null}
+function failProgress(detail){progressStage.textContent='Error';progressDetail.textContent=detail||'La tarea falló.';clearInterval(progressTimer);progressTimer=null;renderProgress()}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function isReady(scene){return !!scene&&(scene.status==='ready_for_review'||scene.auto_pipeline_state==='ready_for_review')}
+function activeScene(){return currentRows[activeSceneIndex]||null}
+function allApproved(){return currentRows.length>0&&currentRows.every(x=>!!x.approved)}
+function approvedCount(){return currentRows.filter(x=>!!x.approved).length}
+function setWorkflowStep(active){steps.forEach((el,i)=>{const n=i+1;el.classList.toggle('done',n<active);el.classList.toggle('active',n===active)})}
+
+function updateWorkflow(){
+  const scene=activeScene();
+  approveStoryboardBtn.disabled=!current||storyboardApproved||generatingAll;
+  generateAllBtn.disabled=!current||!storyboardApproved||generatingAll||!cp.value;
+  finalBtn.disabled=!allApproved()||generatingAll;
+  generateSceneBtn.disabled=!scene||!storyboardApproved||generatingAll||running.has(scene.id)||!cp.value||isReady(scene);
+  approveSceneBtn.disabled=!scene||!isReady(scene)||running.has(scene.id)||generatingAll||scene.approved;
+  approveSceneBtn.textContent=scene?.approved?'✓ Escena aprobada':'✅ Aprobar escena';
+  regenerateSceneBtn.disabled=!scene||!storyboardApproved||generatingAll||running.has(scene.id)||!cp.value||(!isReady(scene)&&!scene.approved);
+  nextSceneBtn.disabled=!scene||activeSceneIndex>=currentRows.length-1||running.has(scene.id)||generatingAll;
+  prevSceneBtn.disabled=!scene||activeSceneIndex<=0||running.has(scene.id)||generatingAll;
+  selectFirstPendingBtn.disabled=!currentRows.length||currentRows.every(x=>!!x.approved)||generatingAll;
+
+  if(!current){setWorkflowStep(1);workflowState.textContent='Creá un proyecto para comenzar.'}
+  else if(!storyboardApproved){setWorkflowStep(1);workflowState.textContent='Revisá el storyboard y aprobalo.'}
+  else if(allApproved()){setWorkflowStep(4);workflowState.textContent='Todas las escenas están aprobadas. Ya podés generar el videoclip final.'}
+  else if(scene&&isReady(scene)&&!scene.approved){setWorkflowStep(3);workflowState.textContent=`Escena ${scene.id} lista. Revisala y aprobala.`}
+  else{setWorkflowStep(2);workflowState.textContent=scene?`Trabajando escena ${scene.id} de ${currentRows.length}.`:'Elegí una escena.'}
+  renderActiveScene();
+}
+
+function renderActiveScene(){
+  const scene=activeScene();
+  if(!scene){activeSceneBody.textContent='Todavía no hay una escena seleccionada.';sceneCounter.textContent='';return}
+  const state=scene.auto_pipeline_state||scene.status||'planned';
+  activeSceneBody.innerHTML=`<b>ESCENA ${scene.id}</b> · ${Number(scene.start||0).toFixed(1)}s–${Number(scene.end||0).toFixed(1)}s
+<br><span class="${scene.approved?'approved':'pending'}">${scene.approved?'✅ Aprobada':'⏳ No aprobada'}</span>
+<br><b>Estado:</b> ${esc(state)}
+<br><br>${esc(scene.lyrics||scene.director_prompt||scene.prompt||'')}`;
+  sceneCounter.textContent=`Escena ${activeSceneIndex+1} de ${currentRows.length} · ${approvedCount()} aprobada${approvedCount()===1?'':'s'} de ${currentRows.length}`;
+}
+
+function selectScene(index){
+  if(index<0||index>=currentRows.length)return;
+  activeSceneIndex=index;
+  draw(currentRows,true);
+}
+window.selectScene=selectScene;
+
+function draw(rows,preserve=true){
+  currentRows=rows||[];
+  if(!preserve||activeSceneIndex>=currentRows.length)activeSceneIndex=0;
+  sb.innerHTML=currentRows.length?currentRows.map((x,i)=>{
+    const state=x.auto_pipeline_state||x.status||'planned';
+    return `<div class="scene ${i===activeSceneIndex?'active':''}" onclick="selectScene(${i})">
+      <div class="top"><b>ESCENA ${x.id} · ${x.start}s–${x.end}s</b><span class="meta">${esc(state)}</span></div>
+      <p>${esc(x.lyrics||x.director_prompt||x.prompt)}</p>
+      <div class="${x.approved?'approved':'pending'}">${x.approved?'✅ Aprobada':isReady(x)?'👀 Lista para revisar':'⏳ Pendiente'}</div>
+    </div>`;
+  }).join(''):'<p class="muted">No hay escenas.</p>';
+  updateWorkflow();
+}
+
+async function fetchJSON(url,options={},retries=4){
+  let lastErr=null;
+  for(let attempt=0;attempt<=retries;attempt++){
+    try{
+      const r=await fetch(url,{cache:'no-store',...options});
+      let j={};try{j=await r.json()}catch{}
+      if(!r.ok)throw Error(j.detail||j.error||`HTTP ${r.status}`);
+      return j;
+    }catch(err){
+      lastErr=err;
+      if(attempt>=retries)break;
+      await sleep(1200*(attempt+1));
+    }
+  }
+  throw lastErr||Error('Error de red');
+}
+
+async function loadCheckpoints(){
+  cp.disabled=true;cp.innerHTML='<option>Verificando modelos…</option>';
+  try{
+    const j=await fetchJSON('/api/control/checkpoints',{},2);
+    if(!j.online)throw Error(j.error||'ComfyUI offline');
+    const models=Array.isArray(j.checkpoints)?j.checkpoints:[];
+    if(!models.length)throw Error('No hay checkpoints detectados');
+    cp.innerHTML='<option value="">Elegí un modelo…</option>'+models.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    cp.disabled=false;if(models.length===1)cp.value=models[0];
+    modelHint.textContent=`${models.length} modelo${models.length===1?'':'s'} detectado${models.length===1?'':'s'} en ComfyUI.`;
+    updateWorkflow();
+  }catch(err){cp.innerHTML='<option value="">Sin modelos</option>';modelHint.textContent=err.message}
+}
+
+async function autoConnect(){
+  localStorage.removeItem('renderWorkerUrl');
+  badge.textContent='Worker: verificando…';connectBtn.disabled=true;createBtn.disabled=true;
+  try{
+    const j=await fetchJSON('/api/control/health?ts='+Date.now(),{},2);
+    if(!j.online||!j.worker_url)throw Error(j.error||'Worker offline');
+    WORKER=j.worker_url;workerInput.value=WORKER;badge.textContent='Worker: online';
+    connectionHint.textContent='Conectado automáticamente a '+WORKER;
+    statusEl.textContent=`Worker online · versión ${j.worker?.version||'n/d'}\nComfyUI: ${j.worker?.comfyui?'online':'offline'}`;
+    createBtn.disabled=false;await loadCheckpoints();return true;
+  }catch(err){
+    WORKER='';workerInput.value=SERVER_WORKER||'';badge.textContent='Worker: offline';
+    connectionHint.textContent='No se pudo conectar automáticamente: '+err.message;
+    statusEl.textContent='Worker offline. Verificá que la Terminal del worker siga abierta.';return false;
+  }finally{connectBtn.disabled=false}
+}
+
+connectBtn.addEventListener('click',autoConnect);
+refreshModels.addEventListener('click',loadCheckpoints);
+cp.addEventListener('change',updateWorkflow);
+
+function createProject(){
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST',w('/api/projects/storyboard'));xhr.timeout=120000;
+    xhr.upload.onprogress=e=>{if(e.lengthComputable)setProgress(Math.min(65,(e.loaded/e.total)*65),'Subiendo archivos',`${Math.round(e.loaded/1048576)} MB de ${Math.round(e.total/1048576)} MB`)};
+    xhr.upload.onload=()=>setProgress(72,'Analizando canción','Creando storyboard…');
+    xhr.onload=()=>{let j={};try{j=JSON.parse(xhr.responseText||'{}')}catch{};xhr.status>=200&&xhr.status<300?resolve(j):reject(Error(j.detail||'Error del worker'))};
+    xhr.onerror=()=>reject(Error('Se perdió la conexión durante la subida'));
+    xhr.ontimeout=()=>reject(Error('El worker tardó demasiado'));
+    xhr.send(new FormData(f));
+  });
+}
+
+f.addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!WORKER){await autoConnect();if(!WORKER)return}
+  beginProgress('Preparando subida','Enviando canción y referencia…',1);
+  createBtn.disabled=true;storyboardApproved=false;activeSceneIndex=0;
+  try{
+    const j=await createProject();
+    current=j.id;currentRows=j.storyboard||[];
+    endProgress('Storyboard listo',`${currentRows.length} escenas creadas`);
+    statusEl.textContent=`Proyecto ${j.id}\nBPM: ${j.analysis?.bpm??'n/d'}\nDuración: ${Number(j.duration||0).toFixed(1)}s\nEscenas: ${currentRows.length}`;
+    draw(currentRows,false);
+    pv.innerHTML='<p class="muted">Storyboard creado. Aprobalo y después trabajá escena por escena.</p>';
+  }catch(err){failProgress(err.message);statusEl.textContent='Error: '+err.message}
+  finally{createBtn.disabled=!WORKER}
+});
+
+async function reload(){
+  if(!current)return null;
+  const p=await fetchJSON(w(`/api/projects/${current}`),{},4);
+  draw(p.storyboard||[],true);
+  return p;
+}
+
+function pipelineProgress(j){
+  const last=(j.log||[]).slice(-1)[0]||{},stage=last.stage||'',state=j.auto_state||j.status||'';
+  if(state==='ready_for_review')return[100,'Lista para revisar'];
+  if(state==='failed'||state==='blocked')return[100,'Pipeline detenido'];
+  if(stage==='upscale')return[90,'Upscale'];
+  if(stage==='lipsync')return[78,'Lip-sync'];
+  if(stage==='face_refine')return[65,'Refinando identidad'];
+  if(state==='waiting_video'||stage==='video')return[50,'Generando video'];
+  if(state==='waiting_image'||stage==='image')return[25,'Generando imagen'];
+  if(stage==='prepare')return[10,'Preparando escena'];
+  return[5,'Iniciando escena'];
+}
+
+async function runScenePipeline(id,onUpdate){
+  for(let i=0;i<900;i++){
+    const j=await fetchJSON(w(`/api/projects/${current}/scenes/${id}/auto-pipeline`),{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({checkpoint:cp.value,fps:24,use_face_refine:true,mouth_mask:true,enhance_face:true,use_lipsync:true,use_upscale:true,upscale_scale:2,strict_optional:false})
+    },5);
+    const last=(j.log||[]).slice(-1)[0],[pct,stage]=pipelineProgress(j);
+    if(onUpdate)onUpdate(pct,stage,last,j);
+    await reload();
+    if(j.auto_state==='ready_for_review')return j;
+    if(['blocked','failed'].includes(j.auto_state))throw Error(j.last_error||j.auto_state);
+    await sleep(2500);
+  }
+  throw Error('Seguimiento agotado');
+}
+
+async function generateActiveScene(){
+  const scene=activeScene();
+  if(!scene||running.has(scene.id)||generatingAll||!storyboardApproved)return;
+  running.add(scene.id);updateWorkflow();
+  beginProgress(`Escena ${scene.id}`,'Iniciando pipeline…',2);
+  try{
+    const j=await runScenePipeline(scene.id,(pct,stage,last)=>setProgress(pct,stage,last?.detail||last?.status||''));
+    endProgress(`Escena ${scene.id} lista`,`Versión ${j.review_version||'-'} lista para revisar`);
+    statusEl.textContent=`Escena ${scene.id} lista para revisar. Si te gusta, aprobala.`;
+  }catch(err){failProgress(err.message);statusEl.textContent=`Escena ${scene.id}: ${err.message}`}
+  finally{running.delete(scene.id);await reload();updateWorkflow()}
+}
+
+async function resetAndRegenerate(){
+  const scene=activeScene();
+  if(!scene||running.has(scene.id)||generatingAll)return;
+  running.add(scene.id);updateWorkflow();
+  beginProgress(`Reiniciando escena ${scene.id}`,'Borrando solo el estado generado de esta escena…',2);
+  try{
+    await fetchJSON(w(`/api/projects/${current}/scenes/${scene.id}/reset-generation`),{method:'POST'},4);
+    await reload();
+    running.delete(scene.id);
+    await generateActiveScene();
+  }catch(err){
+    running.delete(scene.id);failProgress(err.message);statusEl.textContent=`No se pudo reiniciar la escena ${scene.id}: ${err.message}`;updateWorkflow();
+  }
+}
+
+async function approveActiveScene(){
+  const scene=activeScene();
+  if(!scene||!isReady(scene))return;
+  try{
+    await fetchJSON(w(`/api/projects/${current}/scenes/${scene.id}`),{
+      method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({approved:true})
+    },4);
+    await reload();
+    statusEl.textContent=`Escena ${scene.id} aprobada ✓`;
+  }catch(err){statusEl.textContent='No se pudo aprobar: '+err.message}
+}
+
+function nextScene(){if(activeSceneIndex<currentRows.length-1){activeSceneIndex++;draw(currentRows,true)}}
+function prevScene(){if(activeSceneIndex>0){activeSceneIndex--;draw(currentRows,true)}}
+function goFirstPending(){const idx=currentRows.findIndex(x=>!x.approved);if(idx>=0){activeSceneIndex=idx;draw(currentRows,true)}}
+
+generateSceneBtn.addEventListener('click',generateActiveScene);
+approveSceneBtn.addEventListener('click',approveActiveScene);
+regenerateSceneBtn.addEventListener('click',resetAndRegenerate);
+nextSceneBtn.addEventListener('click',nextScene);
+prevSceneBtn.addEventListener('click',prevScene);
+selectFirstPendingBtn.addEventListener('click',goFirstPending);
+
+approveStoryboardBtn.addEventListener('click',()=>{
+  storyboardApproved=true;
+  statusEl.textContent=`Storyboard aprobado ✓\nAhora generá una escena por vez.`;
+  updateWorkflow();
+});
+
+generateAllBtn.addEventListener('click',generateAllScenes);
+async function generateAllScenes(){
+  if(!storyboardApproved||generatingAll)return;
+  generatingAll=true;updateWorkflow();beginProgress('Generando todas las escenas','Modo opcional',1);
+  try{
+    for(let i=0;i<currentRows.length;i++){
+      activeSceneIndex=i;draw(currentRows,true);
+      const scene=currentRows[i];
+      if(isReady(scene))continue;
+      await runScenePipeline(scene.id,(pct,stage,last)=>setProgress(((i+pct/100)/currentRows.length)*100,`Escena ${i+1}/${currentRows.length} · ${stage}`,last?.detail||''));
+    }
+    await reload();endProgress('Todas las escenas generadas','Listas para revisar');statusEl.textContent='Todas las escenas fueron generadas ✓';
+  }catch(err){failProgress(err.message);statusEl.textContent='Generación detenida: '+err.message}
+  finally{generatingAll=false;updateWorkflow()}
+}
+
+finalBtn.addEventListener('click',generateFinalVideo);
+async function generateFinalVideo(){
+  if(!allApproved())return;
+  beginProgress('Armando videoclip final','Uniendo escenas y canción…',5);
+  try{
+    const j=await fetchJSON(w(`/api/projects/${current}/assemble-ai`),{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approved_only:true})
+    },3);
+    endProgress('Videoclip terminado','Listo para descargar');
+    const download=w(j.download_url||`/api/projects/${current}/download-ai`);
+    pv.innerHTML=`<video controls src="${download}"></video><p><a href="${download}" target="_blank">⬇ Descargar videoclip final MP4</a></p>`;
+    statusEl.textContent='Videoclip final listo ✓';
+  }catch(err){failProgress(err.message);statusEl.textContent='No se pudo generar el videoclip final: '+err.message}
+}
+
 autoConnect();
-</script></body></html>'''
+</script>
+</body>
+</html>'''
 
 
 @app.get("/", response_class=HTMLResponse)

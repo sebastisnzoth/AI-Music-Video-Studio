@@ -1,7 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "env": {
-    "RENDER_WORKER_URL": "https://requesting-independently-sapphire-completely.trycloudflare.com"
+    "RENDER_WORKER_URL": "https://requesting-independently-sapphire-completely.trycloudflare.com",
+    "APP_VERSION": "0.13.4"
   },
   "functions": {
     "app/vercel_app.py": {

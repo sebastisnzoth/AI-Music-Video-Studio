@@ -6,7 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import main as main_module
 from . import orchestrator as orchestrator_module
-from .image_engine_adapter import queue_scene_image as routed_queue_scene_image
+from .external_image import external_image_status
+from .image_engine_adapter import (
+    queue_scene_image as routed_queue_scene_image,
+    refresh_scene_generation as routed_refresh_scene_generation,
+)
 from .integrations_api import router as integrations_router
 from .pipeline_api import router as pipeline_router
 from .project_create_api import router as project_create_router
@@ -19,9 +23,10 @@ from .video_engine_adapter import (
 )
 
 # Keep the existing resumable orchestrator, but replace only its generation
-# stages. Image queuing is idempotent and uses a fast 8-step path in Preview;
+# stages. Images try FLUX.2 Klein ZeroGPU first and fall back to local ComfyUI;
 # video tries WAN 2.2 ZeroGPU first and preserves ComfyUI/FFmpeg fallback.
 orchestrator_module.queue_scene_image = routed_queue_scene_image
+orchestrator_module.refresh_scene_generation = routed_refresh_scene_generation
 orchestrator_module.queue_scene_video = routed_queue_scene_video
 orchestrator_module.refresh_scene_video = routed_refresh_scene_video
 
@@ -48,6 +53,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/api/image-engines")
+def image_engines():
+    return {
+        "selected": os.getenv("IMAGE_ENGINE", "flux2-hf"),
+        "flux2-hf": external_image_status(),
+        "fallback": "comfyui",
+        "fallback_enabled": os.getenv("IMAGE_FALLBACK_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"},
+    }
 
 
 @app.get("/api/video-engines")

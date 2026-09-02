@@ -23,6 +23,31 @@ def is_online(base_url: str = DEFAULT_BASE_URL, timeout: float = 1.0) -> bool:
         return False
 
 
+def get_queue(base_url: str = DEFAULT_BASE_URL, timeout: float = 4.0) -> dict[str, Any]:
+    try:
+        response = requests.get(f"{base_url.rstrip('/')}/queue", timeout=timeout)
+    except requests.RequestException as exc:
+        raise ComfyUIError(f"No se pudo consultar la cola de ComfyUI: {exc}") from exc
+    if not response.ok:
+        raise ComfyUIError(f"Error consultando cola de ComfyUI ({response.status_code})")
+    data = response.json()
+    return data if isinstance(data, dict) else {}
+
+
+def prompt_is_active(prompt_id: str, base_url: str = DEFAULT_BASE_URL, timeout: float = 4.0) -> bool:
+    """Return True when a prompt is currently running or pending in ComfyUI."""
+    target = str(prompt_id)
+    queue = get_queue(base_url=base_url, timeout=timeout)
+    for key in ("queue_running", "queue_pending"):
+        rows = queue.get(key, [])
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, list) and len(row) > 1 and str(row[1]) == target:
+                return True
+    return False
+
+
 def _checkpoint_names_from_object_info(payload: Any) -> list[str]:
     if not isinstance(payload, dict):
         return []
@@ -40,11 +65,7 @@ def _checkpoint_names_from_object_info(payload: Any) -> list[str]:
 
 
 def list_checkpoints(base_url: str = DEFAULT_BASE_URL, timeout: float = 4.0) -> list[str]:
-    """Return checkpoint names exactly as ComfyUI exposes them.
-
-    The primary source is CheckpointLoaderSimple's object metadata. A models
-    endpoint is used as a fallback for compatible ComfyUI versions.
-    """
+    """Return checkpoint names exactly as ComfyUI exposes them."""
     base = base_url.rstrip("/")
     errors: list[str] = []
 

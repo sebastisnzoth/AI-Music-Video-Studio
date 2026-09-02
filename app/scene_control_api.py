@@ -1,10 +1,52 @@
 from __future__ import annotations
 
+import mimetypes
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 
 from .pipeline import PROJECTS, load_project, save_json
 
 router = APIRouter(prefix="/api")
+
+
+def _find_scene(meta: dict, scene_id: int):
+    return next(
+        (row for row in meta.get("storyboard", []) if int(row.get("id", -1)) == scene_id),
+        None,
+    )
+
+
+@router.get("/projects/{project_id}/scenes/{scene_id}/preview")
+def scene_preview(project_id: str, scene_id: int):
+    """Serve the best available scene media for browser review."""
+    try:
+        meta = load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+    scene = _find_scene(meta, scene_id)
+    if scene is None:
+        raise HTTPException(404, f"Scene {scene_id} not found")
+
+    for key in (
+        "review_candidate",
+        "upscaled_clip",
+        "lipsync_clip",
+        "face_refined_clip",
+        "generated_clip",
+        "generated_image",
+    ):
+        value = str(scene.get(key, "") or "").strip()
+        if not value:
+            continue
+        path = Path(value)
+        if path.exists() and path.is_file():
+            media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            return FileResponse(path, media_type=media_type)
+
+    raise HTTPException(404, "Scene preview not available yet")
 
 
 @router.post("/projects/{project_id}/scenes/{scene_id}/reset-generation")
@@ -15,10 +57,7 @@ def reset_scene_generation(project_id: str, scene_id: int):
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
 
-    scene = next(
-        (row for row in meta.get("storyboard", []) if int(row.get("id", -1)) == scene_id),
-        None,
-    )
+    scene = _find_scene(meta, scene_id)
     if scene is None:
         raise HTTPException(404, f"Scene {scene_id} not found")
 

@@ -21,6 +21,10 @@ if [ -z "${COMFYUI_OUTPUT_DIR:-}" ] && [ -n "${COMFYUI_DIR:-}" ]; then
   export COMFYUI_OUTPUT_DIR="$COMFYUI_DIR/output"
 fi
 
+# Fast path: remote free ZeroGPU. The Intel Mac is only the fallback.
+export IMAGE_ENGINE="${IMAGE_ENGINE:-flux2-hf}"
+export HF_IMAGE_ENABLED="${HF_IMAGE_ENABLED:-1}"
+export IMAGE_FALLBACK_ENABLED="${IMAGE_FALLBACK_ENABLED:-1}"
 export VIDEO_ENGINE="${VIDEO_ENGINE:-wan22-hf}"
 export HF_VIDEO_ENABLED="${HF_VIDEO_ENABLED:-1}"
 export WEB_ORIGINS="${WEB_ORIGINS:-https://ai-music-video-studio-three.vercel.app,https://ai-music-video-studio-sebastisnzoths-projects.vercel.app,https://money-printer-turbo-sebastisnzoths-projects.vercel.app,https://money-printer-turbo-git-main-sebastisnzoths-projects.vercel.app,http://127.0.0.1:8080,http://localhost:8080}"
@@ -31,6 +35,7 @@ if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; 
 fi
 
 echo "AI Music Video Studio worker"
+echo "IMAGE_ENGINE=$IMAGE_ENGINE (FLUX.2 Klein ZeroGPU; ComfyUI fallback=$IMAGE_FALLBACK_ENABLED)"
 echo "COMFYUI_URL=$COMFYUI_URL"
 echo "COMFYUI_DIR=${COMFYUI_DIR:-auto/API}"
 echo "COMFYUI_OUTPUT_DIR=${COMFYUI_OUTPUT_DIR:-auto/API}"

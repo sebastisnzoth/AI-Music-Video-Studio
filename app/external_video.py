@@ -70,12 +70,10 @@ def _extract_path(value: Any) -> Path | None:
         path = Path(value)
         return path if path.exists() else None
     if isinstance(value, dict):
-        # FileData is commonly materialized as a dict-like object.
         for key in ("path", "name"):
             candidate = value.get(key)
             if isinstance(candidate, str) and Path(candidate).exists():
                 return Path(candidate)
-        # Prefer the downloadable file output over video metadata when both exist.
         for key in ("file", "video", "value", "data"):
             if key in value:
                 found = _extract_path(value[key])
@@ -192,7 +190,7 @@ def queue_wan22_scene_video(
     token = os.getenv("HF_TOKEN", "").strip() or None
     client_kwargs: dict[str, Any] = {"verbose": False}
     if token:
-        client_kwargs["hf_token"] = token
+        client_kwargs["token"] = token
 
     # Client construction reads the Space schema; submit returns immediately with
     # a queue-aware Job object rather than holding our FastAPI request open.

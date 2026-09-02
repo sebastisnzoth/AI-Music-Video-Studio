@@ -64,6 +64,9 @@ def reset_scene_generation(project_id: str, scene_id: int):
     transient_keys = {
         "generated_image",
         "generated_image_source",
+        "image_generation_backend",
+        "external_image_task_id",
+        "external_image_error",
         "generated_clip",
         "generated_clip_source",
         "face_refined_clip",

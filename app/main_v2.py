@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import main as main_module
 from . import orchestrator as orchestrator_module
+from .image_engine_adapter import queue_scene_image as routed_queue_scene_image
 from .integrations_api import router as integrations_router
 from .pipeline_api import router as pipeline_router
 from .project_create_api import router as project_create_router
@@ -17,9 +18,10 @@ from .video_engine_adapter import (
     video_engines_status,
 )
 
-# Keep the existing resumable orchestrator, but replace only its video stage.
-# This lets WAN 2.2 ZeroGPU run externally while preserving ComfyUI/FFmpeg as
-# an automatic fallback and requires no restart between individual scenes.
+# Keep the existing resumable orchestrator, but replace only its generation
+# stages. Image queuing is idempotent and uses a fast 8-step path in Preview;
+# video tries WAN 2.2 ZeroGPU first and preserves ComfyUI/FFmpeg fallback.
+orchestrator_module.queue_scene_image = routed_queue_scene_image
 orchestrator_module.queue_scene_video = routed_queue_scene_video
 orchestrator_module.refresh_scene_video = routed_refresh_scene_video
 
@@ -55,4 +57,4 @@ app.include_router(project_create_router)
 app.include_router(scene_control_router)
 app.include_router(pipeline_router)
 app.include_router(integrations_router)
-app.version = "0.13.5"
+app.version = "0.13.6"

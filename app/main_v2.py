@@ -35,6 +35,8 @@ DEFAULT_WEB_ORIGINS = ",".join([
     "http://localhost:3000",
     "https://ai-music-video-studio-three.vercel.app",
     "https://ai-music-video-studio-sebastisnzoths-projects.vercel.app",
+    "https://money-printer-turbo-sebastisnzoths-projects.vercel.app",
+    "https://money-printer-turbo-git-main-sebastisnzoths-projects.vercel.app",
 ])
 raw_origins = os.getenv("WEB_ORIGINS", DEFAULT_WEB_ORIGINS)
 origins = [item.strip() for item in raw_origins.split(",") if item.strip()]
@@ -57,4 +59,4 @@ app.include_router(project_create_router)
 app.include_router(scene_control_router)
 app.include_router(pipeline_router)
 app.include_router(integrations_router)
-app.version = "0.13.7"
+app.version = "0.13.8"

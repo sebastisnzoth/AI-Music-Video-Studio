@@ -6,7 +6,18 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .comfyui import ComfyUIError, DEFAULT_BASE_URL, get_history, load_workflow, output_files, queue_prompt, render_workflow
+import requests
+
+from .comfyui import (
+    ComfyUIError,
+    DEFAULT_BASE_URL,
+    get_history,
+    load_workflow,
+    output_files,
+    prompt_is_active,
+    queue_prompt,
+    render_workflow,
+)
 from .pipeline import PROJECTS, load_project, save_json
 from .scene_package import prepare_scene_package
 
@@ -28,33 +39,76 @@ def _dimensions(aspect: str, quality: str) -> tuple[int, int]:
 
 
 def _comfy_output_dir() -> Path | None:
+    """Find ComfyUI output locally when possible.
+
+    The app repo and ComfyUI commonly live next to each other on the user's
+    external drive, so detect that layout automatically. HTTP import is still
+    used as a fallback when no filesystem path is available.
+    """
+    candidates: list[Path] = []
     explicit = os.getenv("COMFYUI_OUTPUT_DIR")
     if explicit:
-        return Path(explicit).expanduser()
+        candidates.append(Path(explicit).expanduser())
     root = os.getenv("COMFYUI_DIR")
     if root:
-        return Path(root).expanduser() / "output"
-    conventional = Path.home() / "ComfyUI" / "output"
-    return conventional if conventional.exists() else None
+        candidates.append(Path(root).expanduser() / "output")
+    candidates.extend([
+        ROOT.parent / "ComfyUI" / "output",
+        Path("/Volumes/Armazenamento/ComfyUI/output"),
+        Path.home() / "ComfyUI" / "output",
+    ])
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+    return None
 
 
-def _import_image_output(project_id: str, scene_id: int, item: dict[str, str]) -> Path | None:
-    output_dir = _comfy_output_dir()
-    if output_dir is None:
-        return None
+def _scene_image_target(project_id: str, scene_id: int, suffix: str) -> Path:
+    scene_dir = PROJECTS / project_id / "scenes" / f"{scene_id:03d}"
+    scene_dir.mkdir(parents=True, exist_ok=True)
+    return scene_dir / f"image-generated{suffix or '.png'}"
+
+
+def _import_image_output(
+    project_id: str,
+    scene_id: int,
+    item: dict[str, str],
+    base_url: str = DEFAULT_BASE_URL,
+) -> Path | None:
     filename = str(item.get("filename", "")).strip()
     if not filename:
         return None
     subfolder = str(item.get("subfolder", "")).strip()
-    source = output_dir / subfolder / filename if subfolder else output_dir / filename
-    if not source.exists():
+    suffix = Path(filename).suffix.lower() or ".png"
+    target = _scene_image_target(project_id, scene_id, suffix)
+
+    # Fast path: copy directly from ComfyUI's output directory when local.
+    output_dir = _comfy_output_dir()
+    if output_dir is not None:
+        source = output_dir / subfolder / filename if subfolder else output_dir / filename
+        if source.exists():
+            if source.resolve() != target.resolve():
+                shutil.copy2(source, target)
+            return target
+
+    # Robust path: fetch the generated media from ComfyUI's own /view endpoint.
+    # This removes any dependency on where ComfyUI is installed on disk.
+    params = {
+        "filename": filename,
+        "subfolder": subfolder,
+        "type": str(item.get("type", "output") or "output"),
+    }
+    try:
+        response = requests.get(
+            f"{base_url.rstrip('/')}/view",
+            params=params,
+            timeout=30,
+        )
+    except requests.RequestException:
         return None
-    scene_dir = PROJECTS / project_id / "scenes" / f"{scene_id:03d}"
-    scene_dir.mkdir(parents=True, exist_ok=True)
-    suffix = source.suffix.lower() or ".png"
-    target = scene_dir / f"image-generated{suffix}"
-    if source.resolve() != target.resolve():
-        shutil.copy2(source, target)
+    if not response.ok or not response.content:
+        return None
+    target.write_bytes(response.content)
     return target
 
 
@@ -93,6 +147,7 @@ def queue_scene_image(
     scene["status"] = "generating_image"
     scene["generation_engine"] = "comfyui-image"
     scene["comfyui_prompt_id"] = prompt_id
+    scene.pop("comfyui_missing_polls", None)
     scene["generation_settings"] = {
         "checkpoint": checkpoint,
         "seed": actual_seed,
@@ -122,8 +177,6 @@ def refresh_scene_generation(project_id: str, scene_id: int, base_url: str = DEF
     try:
         history = get_history(str(prompt_id), base_url=base_url)
     except ComfyUIError as exc:
-        # En CPU ComfyUI puede tardar en responder mientras genera. Eso no debe
-        # detener el pipeline: se considera un fallo transitorio y se reintenta.
         return {
             "project_id": project_id,
             "scene_id": scene_id,
@@ -135,13 +188,54 @@ def refresh_scene_generation(project_id: str, scene_id: int, base_url: str = DEF
         }
 
     if history is None:
-        return {"project_id": project_id, "scene_id": scene_id, "status": scene.get("status", "generating_image"), "outputs": []}
+        # A manually cleared queue or restarted ComfyUI used to leave the scene
+        # stuck forever at waiting_image. Detect a genuinely lost prompt and
+        # release the scene so the next pipeline tick can queue it again.
+        try:
+            active = prompt_is_active(str(prompt_id), base_url=base_url)
+        except ComfyUIError:
+            active = True
+        if active:
+            scene.pop("comfyui_missing_polls", None)
+            save_json(project_dir / "project.json", meta)
+            return {
+                "project_id": project_id,
+                "scene_id": scene_id,
+                "status": scene.get("status", "generating_image"),
+                "outputs": [],
+                "prompt_id": prompt_id,
+            }
 
+        missing = int(scene.get("comfyui_missing_polls", 0)) + 1
+        scene["comfyui_missing_polls"] = missing
+        if missing >= 3:
+            scene.pop("comfyui_prompt_id", None)
+            scene.pop("comfyui_missing_polls", None)
+            scene["status"] = "planned"
+            save_json(project_dir / "project.json", meta)
+            return {
+                "project_id": project_id,
+                "scene_id": scene_id,
+                "status": "generation_lost",
+                "outputs": [],
+                "requeue": True,
+            }
+        save_json(project_dir / "project.json", meta)
+        return {
+            "project_id": project_id,
+            "scene_id": scene_id,
+            "status": scene.get("status", "generating_image"),
+            "outputs": [],
+            "prompt_id": prompt_id,
+            "missing_polls": missing,
+        }
+
+    scene.pop("comfyui_missing_polls", None)
     files = output_files(history)
     image_candidates = [item for item in files if item.get("kind") == "images"]
     imported: Path | None = None
     for candidate in image_candidates:
-        imported = _import_image_output(project_id, scene_id, candidate)
+        imported = _import_image_output(project_id, scene_id, candidate, base_url=base_url)
         if imported is not None:
             break
 
@@ -152,7 +246,7 @@ def refresh_scene_generation(project_id: str, scene_id: int, base_url: str = DEF
         scene["generated_image"] = str(imported)
         scene["generated_image_source"] = "comfyui"
     elif completed and image_candidates:
-        scene["status"] = "image_ready_external"
+        scene["status"] = "generation_failed"
     else:
         scene["status"] = "generation_failed" if completed else "generating_image"
     scene["comfyui_outputs"] = files

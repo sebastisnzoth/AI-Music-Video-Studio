@@ -23,7 +23,7 @@ fi
 
 export VIDEO_ENGINE="${VIDEO_ENGINE:-wan22-hf}"
 export HF_VIDEO_ENABLED="${HF_VIDEO_ENABLED:-1}"
-export WEB_ORIGINS="${WEB_ORIGINS:-https://ai-music-video-studio-three.vercel.app,https://ai-music-video-studio-sebastisnzoths-projects.vercel.app,http://127.0.0.1:8080,http://localhost:8080}"
+export WEB_ORIGINS="${WEB_ORIGINS:-https://ai-music-video-studio-three.vercel.app,https://ai-music-video-studio-sebastisnzoths-projects.vercel.app,https://money-printer-turbo-sebastisnzoths-projects.vercel.app,https://money-printer-turbo-git-main-sebastisnzoths-projects.vercel.app,http://127.0.0.1:8080,http://localhost:8080}"
 
 if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
   echo "ERROR: faltan FFmpeg/FFprobe en $ROOT/.tools/bin"

@@ -8,6 +8,7 @@ from . import main as main_module
 from .integrations_api import router as integrations_router
 from .pipeline_api import router as pipeline_router
 from .project_create_api import router as project_create_router
+from .scene_control_api import router as scene_control_router
 from .ui_extensions import enhance_page
 
 app = main_module.app
@@ -33,6 +34,7 @@ app.add_middleware(
 )
 
 app.include_router(project_create_router)
+app.include_router(scene_control_router)
 app.include_router(pipeline_router)
 app.include_router(integrations_router)
-app.version = "0.13.3"
+app.version = "0.13.4"

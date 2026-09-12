@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import uuid
 
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import main as main_module
@@ -21,6 +23,7 @@ from .video_engine_adapter import (
     refresh_scene_video as routed_refresh_scene_video,
     video_engines_status,
 )
+from .worker_contract import router as worker_contract_router
 
 # Keep the existing resumable orchestrator, but replace only its generation
 # stages. Images try FLUX.2 Klein ZeroGPU first and fall back to local ComfyUI;
@@ -55,6 +58,16 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def request_tracing(request: Request, call_next):
+    request_id = request.headers.get("x-request-id", "").strip()[:128] or uuid.uuid4().hex
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Worker-Version"] = app.version
+    return response
+
+
 @app.get("/api/image-engines")
 def image_engines():
     return {
@@ -70,8 +83,9 @@ def video_engines():
     return video_engines_status()
 
 
+app.include_router(worker_contract_router)
 app.include_router(project_create_router)
 app.include_router(scene_control_router)
 app.include_router(pipeline_router)
 app.include_router(integrations_router)
-app.version = "0.13.8"
+app.version = "0.14.0"

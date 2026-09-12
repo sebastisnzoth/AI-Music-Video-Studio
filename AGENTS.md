@@ -6,12 +6,26 @@ Este archivo define cómo deben trabajar Codex/GPT/otros agentes dentro de este 
 
 Documento maestro: `CTO_MASTER.md`.
 
+Protocolo operativo de Codex: `CODEX.md`.
+
+Estado persistente entre sesiones: `HANDOFF.md`.
+
 Antes de modificar arquitectura, pipeline o despliegue, leer:
 
 1. `CTO_MASTER.md`
-2. `README.md`
-3. `docs/REPO_ASSESSMENT.md`
-4. los `SKILL.md` aplicables bajo `.agents/skills/`
+2. `AGENTS.md`
+3. `CODEX.md`
+4. `HANDOFF.md`
+5. `README.md`
+6. `docs/REPO_ASSESSMENT.md`
+7. `docs/CTO_AUDIT_2026-09-12.md`
+8. los `SKILL.md` aplicables bajo `.agents/skills/`
+
+Si hay conflicto:
+- `CTO_MASTER.md` define objetivo y arquitectura;
+- `AGENTS.md` define reglas, prioridades y límites;
+- `CODEX.md` define el protocolo de ejecución autónoma;
+- `HANDOFF.md` define el punto exacto donde continuar.
 
 ## Modo de trabajo
 
@@ -24,6 +38,8 @@ Pregunta operativa obligatoria:
 > ¿Qué impide hoy que esto produzca un videoclip real de punta a punta?
 
 La respuesta determina la siguiente tarea.
+
+Cuando el usuario indique simplemente que se continúe según `AGENTS.md`, `CODEX.md` o `HANDOFF.md`, no reconstruir el plan desde cero: leer el estado persistido, verificarlo contra el repo y continuar desde el primer `NEXT` válido.
 
 ## Orden de prioridad
 
@@ -98,20 +114,40 @@ Preguntar solamente cuando la decisión:
 - cambie el producto;
 - reemplace el backend principal;
 - requiera claves/servicios que el usuario deba contratar;
-- implique una decisión irreversible o de seguridad relevante.
+- implique una decisión irreversible o de seguridad relevante;
+- requiera una acción de producción irreversible.
 
 ## Ciclo autónomo
 
 Por cada iteración:
 
-1. inspeccionar estado actual;
-2. identificar bloqueo más importante;
-3. implementar cambio mínimo suficiente;
-4. ejecutar/verificar tests disponibles;
-5. agregar test si falta cobertura del cambio;
-6. revisar seguridad/regresión;
-7. documentar solo lo necesario;
-8. continuar con el siguiente P0.
+1. leer `HANDOFF.md`;
+2. inspeccionar estado actual y validar que el handoff siga siendo cierto;
+3. identificar el bloqueo más importante;
+4. tomar el primer `NEXT` válido o reemplazarlo por un P0 más crítico si la evidencia cambió;
+5. implementar cambio mínimo suficiente;
+6. ejecutar/verificar tests disponibles;
+7. agregar test si falta cobertura del cambio;
+8. revisar seguridad/regresión;
+9. actualizar `HANDOFF.md` con estado y evidencia;
+10. documentar roadmap/audit solo si cambió el estado real;
+11. commitear;
+12. continuar con el siguiente P0.
+
+No dejar un trabajo activo sin actualizar `HANDOFF.md`.
+
+## Estados obligatorios de handoff
+
+Usar los estados definidos en `CODEX.md`:
+
+- `NEXT`
+- `IN PROGRESS`
+- `IMPLEMENTED`
+- `VALIDATED`
+- `RELEASED`
+- `BLOCKED`
+
+No marcar `VALIDATED` sin pruebas/verificación. No marcar `RELEASED` solo porque existe un commit o un deploy automático.
 
 ## Criterio para crear nuevas Skills
 
@@ -129,12 +165,15 @@ El repositorio ya contiene un pipeline local amplio, adapters para ComfyUI/Local
 
 Problema operativo prioritario: la conectividad y estabilidad del render worker, seguida por contratos API, persistencia/reanudación y tests automatizados.
 
+El estado operativo actualizado debe consultarse en `HANDOFF.md`; esta sección no reemplaza al handoff.
+
 ## Entrega
 
-Al finalizar un bloque de trabajo informar:
-- qué se cambió;
-- qué se verificó;
-- qué P0 sigue;
-- bloqueos reales, si existen.
+Al finalizar un bloque de trabajo:
+- actualizar `HANDOFF.md`;
+- informar qué se cambió;
+- informar qué se verificó;
+- indicar qué P0 sigue;
+- indicar bloqueos reales, si existen.
 
 No reportar como terminado algo que solo quedó documentado si el pedido era implementarlo.
